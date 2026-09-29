@@ -49,10 +49,13 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.mirinnano.guitartools.R
 import dev.mirinnano.guitartools.audio.MetronomeConfig
+import dev.mirinnano.guitartools.audio.ScreenOffMetronomePlayer
 import dev.mirinnano.guitartools.music.Chord
 import dev.mirinnano.guitartools.music.ChordQuality
 import dev.mirinnano.guitartools.music.CommonChords
@@ -66,10 +69,30 @@ import dev.mirinnano.guitartools.ui.components.ChordDiagram
 @Composable
 fun PracticeScreen(
     modifier: Modifier = Modifier,
-    viewModel: PracticeViewModel = viewModel(),
     playbackViewModel: PlaybackViewModel = viewModel()
 ) {
     val context = LocalContext.current
+
+    val practiceFactory = remember(
+        context.applicationContext
+    ) {
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(
+                modelClass: Class<T>
+            ): T {
+                @Suppress("UNCHECKED_CAST")
+                return PracticeViewModel(
+                    metronome =
+                        ScreenOffMetronomePlayer(
+                            context.applicationContext
+                        )
+                ) as T
+            }
+        }
+    }
+
+    val viewModel: PracticeViewModel =
+        viewModel(factory = practiceFactory)
 
     val state by
         viewModel.uiState.collectAsStateWithLifecycle()
