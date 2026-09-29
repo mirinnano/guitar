@@ -7,13 +7,14 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,22 +33,10 @@ private enum class ToolTab(
     @StringRes val titleRes: Int,
     val icon: ImageVector
 ) {
-    Metronome(
-        titleRes = R.string.tab_metronome,
-        icon = Icons.Rounded.Timer
-    ),
-    Tuner(
-        titleRes = R.string.tab_tuner,
-        icon = Icons.Rounded.GraphicEq
-    ),
-    Chords(
-        titleRes = R.string.tab_chords,
-        icon = Icons.Rounded.LibraryMusic
-    ),
-    Fretboard(
-        titleRes = R.string.tab_fretboard,
-        icon = Icons.Rounded.GridOn
-    )
+    Metronome(R.string.tab_metronome, Icons.Rounded.Timer),
+    Tuner(R.string.tab_tuner, Icons.Rounded.GraphicEq),
+    Chords(R.string.tab_chords, Icons.Rounded.LibraryMusic),
+    Fretboard(R.string.tab_fretboard, Icons.Rounded.GridOn)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,11 +47,13 @@ fun GuitarToolsApp() {
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = stringResource(selectedTab.titleRes)
+                        text = stringResource(selectedTab.titleRes),
+                        style = MaterialTheme.typography.titleLarge
                     )
                 }
             )
