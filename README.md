@@ -19,11 +19,15 @@ The first version intentionally focuses on four tools:
   - YIN pitch detection
   - Median frequency smoothing
   - Chromatic note / octave / cents display
+  - Standard, Drop D, E♭ Standard, and D Standard presets
+  - Automatic nearest-string target guidance
   - Adjustable A4 reference pitch
   - Noise gate and no-signal state
 
 - **Chords**
-  - Searchable common open chords
+  - Searchable common chord library
+  - Major, minor, dominant 7, maj7, and m7 filters
+  - Theory-derived chord tones
   - Data-driven fret and finger positions
   - Custom-drawn chord diagrams
 
