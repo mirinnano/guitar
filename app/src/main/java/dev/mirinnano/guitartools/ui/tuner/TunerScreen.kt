@@ -18,11 +18,12 @@ import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -33,7 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -47,8 +50,10 @@ import dev.mirinnano.guitartools.music.TuningTarget
 import java.util.Locale
 import kotlin.math.abs
 
-private const val MIN_REFERENCE_PITCH = 430f
-private const val MAX_REFERENCE_PITCH = 450f
+private const val MIN_REFERENCE_PITCH =
+    430f
+private const val MAX_REFERENCE_PITCH =
+    450f
 private const val IN_TUNE_CENTS = 5.0
 
 @Composable
@@ -57,21 +62,58 @@ fun TunerScreen(
     viewModel: TunerViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val haptics =
+        LocalHapticFeedback.current
+
+    val state by
+        viewModel.uiState
+            .collectAsStateWithLifecycle()
 
     var microphoneGranted by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
+            ContextCompat
+                .checkSelfPermission(
+                    context,
+                    Manifest.permission
+                        .RECORD_AUDIO
+                ) ==
+                PackageManager
+                    .PERMISSION_GRANTED
         )
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        microphoneGranted = granted
+    var previouslyInTune by remember {
+        mutableStateOf(false)
+    }
+
+    val permissionLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts
+                .RequestPermission()
+        ) { granted ->
+            microphoneGranted = granted
+        }
+
+    val isInTune =
+        state.target?.let {
+            abs(it.centsFromTarget) <=
+                IN_TUNE_CENTS
+        } == true
+
+    LaunchedEffect(
+        isInTune,
+        state.hapticEnabled
+    ) {
+        if (
+            isInTune &&
+            !previouslyInTune &&
+            state.hapticEnabled
+        ) {
+            haptics.performHapticFeedback(
+                HapticFeedbackType.LongPress
+            )
+        }
+        previouslyInTune = isInTune
     }
 
     LaunchedEffect(microphoneGranted) {
@@ -89,97 +131,72 @@ fun TunerScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .verticalScroll(
+                rememberScrollState()
+            )
+            .padding(
+                horizontal = 20.dp,
+                vertical = 16.dp
+            ),
+        verticalArrangement =
+            Arrangement.spacedBy(16.dp)
     ) {
         if (!microphoneGranted) {
             MicrophonePermissionCard(
                 onRequestPermission = {
                     permissionLauncher.launch(
-                        Manifest.permission.RECORD_AUDIO
+                        Manifest.permission
+                            .RECORD_AUDIO
                     )
                 }
             )
             return@Column
         }
 
-        val reading = state.reading
-        val target = reading?.let {
-            state.selectedTuning.closestString(
-                frequencyHz = it.frequencyHz,
-                a4Hz = state.a4Hz
-            )
-        }
-
         PitchCard(
-            reading = reading,
-            target = target,
-            tuning = state.selectedTuning
+            reading = state.reading,
+            target = state.target,
+            tuning =
+                state.selectedTuning
+        )
+
+        StringTargetCard(
+            state = state,
+            onLock =
+                viewModel::setLockedString,
+            onTone =
+                viewModel::playReferenceString
         )
 
         TuningPresetCard(
-            selectedTuning = state.selectedTuning,
-            onTuningSelected = viewModel::setTuning
+            state = state,
+            onTuningSelected =
+                viewModel::setTuning,
+            onCustom =
+                viewModel::selectCustomTuning,
+            onCustomChange =
+                viewModel::changeCustomString
         )
 
         ReferencePitchCard(
-            a4Hz = state.a4Hz,
-            onReferencePitchChange = viewModel::setReferencePitch
+            state = state,
+            onReferencePitchChange =
+                viewModel::setReferencePitch,
+            onSensitivity =
+                viewModel::setSensitivity,
+            onHaptic =
+                viewModel::setHapticEnabled
         )
 
         if (state.errorMessage != null) {
             Text(
-                text = stringResource(R.string.tuner_error),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
-}
-
-@Composable
-private fun MicrophonePermissionCard(
-    onRequestPermission: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(28.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Mic,
-                contentDescription = null
-            )
-
-            Text(
-                text = stringResource(R.string.microphone_access),
-                style = MaterialTheme.typography.titleLarge
-            )
-
-            Text(
                 text = stringResource(
-                    R.string.microphone_access_description
+                    R.string.tuner_error
                 ),
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color =
+                    MaterialTheme.colorScheme
+                        .error
             )
-
-            Button(
-                onClick = onRequestPermission
-            ) {
-                Text(
-                    stringResource(R.string.allow_microphone)
-                )
-            }
         }
     }
 }
@@ -190,32 +207,100 @@ private fun PitchCard(
     target: TuningTarget?,
     tuning: Tuning
 ) {
-    val targetCents = target?.centsFromTarget ?: 0.0
-    val progress = (
-        (targetCents.coerceIn(-50.0, 50.0) + 50.0) / 100.0
-    ).toFloat()
+    val cents =
+        target?.centsFromTarget
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor =
+                MaterialTheme.colorScheme
+                    .primaryContainer
         )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 28.dp, vertical = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(
+                    horizontal = 24.dp,
+                    vertical = 28.dp
+                ),
+            horizontalAlignment =
+                Alignment.CenterHorizontally,
+            verticalArrangement =
+                Arrangement.spacedBy(6.dp)
         ) {
             Text(
                 text = reading?.let {
-                    it.note.displayName(tuning.accidentalPreference) +
-                        it.octave
+                    it.note.displayName(
+                        tuning
+                            .accidentalPreference
+                    ) + it.octave
                 } ?: "—",
-                style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                style =
+                    MaterialTheme.typography
+                        .displayLarge,
+                color =
+                    MaterialTheme.colorScheme
+                        .onPrimaryContainer
             )
+
+            if (target != null) {
+                Text(
+                    text = stringResource(
+                        R.string.string_target,
+                        target.string
+                            .stringNumber,
+                        target.string.label
+                    ),
+                    style =
+                        MaterialTheme.typography
+                            .titleMedium,
+                    color =
+                        MaterialTheme.colorScheme
+                            .onPrimaryContainer
+                )
+            }
+
+            TunerGauge(
+                cents = cents
+            )
+
+            Text(
+                text = target?.let {
+                    stringResource(
+                        R.string.cents_format,
+                        it.centsFromTarget
+                            .toInt()
+                    )
+                } ?: stringResource(
+                    R.string.listening
+                ),
+                style =
+                    MaterialTheme.typography
+                        .titleMedium,
+                color =
+                    MaterialTheme.colorScheme
+                        .onPrimaryContainer
+            )
+
+            if (target != null &&
+                abs(
+                    target.centsFromTarget
+                ) <= IN_TUNE_CENTS
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.in_tune
+                    ),
+                    style =
+                        MaterialTheme.typography
+                            .labelLarge,
+                    color =
+                        MaterialTheme.colorScheme
+                            .onPrimaryContainer
+                )
+            }
 
             Text(
                 text = reading?.let {
@@ -224,150 +309,400 @@ private fun PitchCard(
                         "%.1f Hz",
                         it.frequencyHz
                     )
-                } ?: stringResource(R.string.play_a_string),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                } ?: stringResource(
+                    R.string.play_a_string
+                ),
+                style =
+                    MaterialTheme.typography
+                        .bodyMedium,
+                color =
+                    MaterialTheme.colorScheme
+                        .onPrimaryContainer
             )
+        }
+    }
+}
 
-            if (target != null) {
-                Text(
-                    text = stringResource(
-                        R.string.string_target,
-                        target.string.stringNumber,
-                        target.string.label
-                    ),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
+@Composable
+private fun StringTargetCard(
+    state: TunerUiState,
+    onLock: (Int?) -> Unit,
+    onTone: (Int) -> Unit
+) {
+    SettingsCard {
+        SectionTitle(
+            stringResource(
+                R.string.target_string
+            )
+        )
 
-            Text(
-                text = target?.let {
-                    stringResource(
-                        R.string.cents_format,
-                        it.centsFromTarget.toInt()
+        ChoiceRow {
+            FilterChip(
+                selected =
+                    state.lockedStringNumber ==
+                        null,
+                onClick = {
+                    onLock(null)
+                },
+                label = {
+                    Text(
+                        stringResource(
+                            R.string.auto
+                        )
                     )
-                } ?: stringResource(R.string.listening),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                }
             )
 
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
-            )
+            state.selectedTuning
+                .strings
+                .sortedByDescending {
+                    it.stringNumber
+                }
+                .forEach { string ->
+                    FilterChip(
+                        selected =
+                            state.lockedStringNumber ==
+                                string.stringNumber,
+                        onClick = {
+                            onLock(
+                                string.stringNumber
+                            )
+                        },
+                        label = {
+                            Text(
+                                string.stringNumber
+                                    .toString()
+                            )
+                        }
+                    )
+                }
+        }
 
-            if (
-                target != null &&
-                abs(target.centsFromTarget) <= IN_TUNE_CENTS
-            ) {
-                Text(
-                    text = stringResource(R.string.in_tune),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
+        Text(
+            text = stringResource(
+                R.string.reference_tones
+            ),
+            style =
+                MaterialTheme.typography
+                    .labelLarge,
+            color =
+                MaterialTheme.colorScheme
+                    .onSurfaceVariant
+        )
 
-            if (reading != null) {
-                Text(
-                    text = stringResource(
-                        R.string.chromatic_offset,
-                        reading.cents.toInt()
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
+        Row(
+            modifier =
+                Modifier.fillMaxWidth(),
+            horizontalArrangement =
+                Arrangement.spacedBy(6.dp)
+        ) {
+            state.selectedTuning
+                .strings
+                .sortedByDescending {
+                    it.stringNumber
+                }
+                .forEach { string ->
+                    FilledTonalButton(
+                        onClick = {
+                            onTone(
+                                string.stringNumber
+                            )
+                        },
+                        modifier =
+                            Modifier.weight(1f)
+                    ) {
+                        Text(string.label)
+                    }
+                }
         }
     }
 }
 
 @Composable
 private fun TuningPresetCard(
-    selectedTuning: Tuning,
-    onTuningSelected: (Tuning) -> Unit
+    state: TunerUiState,
+    onTuningSelected: (Tuning) -> Unit,
+    onCustom: () -> Unit,
+    onCustomChange: (Int, Int) -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    SettingsCard {
+        SectionTitle(
+            stringResource(R.string.tuning)
         )
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.tuning),
-                style = MaterialTheme.typography.titleMedium
-            )
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Tuning.Presets.forEach { tuning ->
-                    FilterChip(
-                        selected = selectedTuning.id == tuning.id,
-                        onClick = {
-                            onTuningSelected(tuning)
-                        },
-                        label = {
-                            Text(tuning.name)
-                        }
-                    )
-                }
+        ChoiceRow {
+            Tuning.Presets.forEach {
+                    tuning ->
+                FilterChip(
+                    selected =
+                        state.selectedTuning.id ==
+                            tuning.id,
+                    onClick = {
+                        onTuningSelected(tuning)
+                    },
+                    label = {
+                        Text(tuning.name)
+                    }
+                )
             }
 
-            Text(
-                text = selectedTuning.strings
-                    .sortedByDescending { it.stringNumber }
-                    .joinToString("  ") { it.label },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+            FilterChip(
+                selected =
+                    state.selectedTuning.id ==
+                        "custom",
+                onClick = onCustom,
+                label = {
+                    Text("Custom")
+                }
             )
+        }
+
+        if (
+            state.selectedTuning.id ==
+            "custom"
+        ) {
+            state.selectedTuning
+                .strings
+                .sortedByDescending {
+                    it.stringNumber
+                }
+                .forEach { string ->
+                    Row(
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text =
+                                stringResource(
+                                    R.string.string_number,
+                                    string.stringNumber
+                                ),
+                            modifier =
+                                Modifier.weight(1f)
+                        )
+
+                        FilledTonalButton(
+                            onClick = {
+                                onCustomChange(
+                                    string.stringNumber,
+                                    -1
+                                )
+                            }
+                        ) {
+                            Text("−")
+                        }
+
+                        Text(
+                            text = string.label,
+                            modifier =
+                                Modifier.padding(
+                                    horizontal = 12.dp
+                                )
+                        )
+
+                        FilledTonalButton(
+                            onClick = {
+                                onCustomChange(
+                                    string.stringNumber,
+                                    1
+                                )
+                            }
+                        ) {
+                            Text("+")
+                        }
+                    }
+                }
         }
     }
 }
 
 @Composable
 private fun ReferencePitchCard(
-    a4Hz: Double,
-    onReferencePitchChange: (Double) -> Unit
+    state: TunerUiState,
+    onReferencePitchChange:
+        (Double) -> Unit,
+    onSensitivity: (Float) -> Unit,
+    onHaptic: (Boolean) -> Unit
+) {
+    SettingsCard {
+        SectionTitle(
+            stringResource(
+                R.string.reference_pitch
+            )
+        )
+
+        ChoiceRow {
+            listOf(432, 440, 442)
+                .forEach { hz ->
+                    FilterChip(
+                        selected =
+                            state.a4Hz.toInt() ==
+                                hz,
+                        onClick = {
+                            onReferencePitchChange(
+                                hz.toDouble()
+                            )
+                        },
+                        label = {
+                            Text("$hz Hz")
+                        }
+                    )
+                }
+        }
+
+        Text(
+            text =
+                "A4 = " +
+                    state.a4Hz.toInt() +
+                    " Hz",
+            color =
+                MaterialTheme.colorScheme
+                    .onSurfaceVariant
+        )
+
+        Slider(
+            value =
+                state.a4Hz.toFloat(),
+            onValueChange = {
+                onReferencePitchChange(
+                    it.toDouble()
+                )
+            },
+            valueRange =
+                MIN_REFERENCE_PITCH..
+                    MAX_REFERENCE_PITCH
+        )
+
+        Text(
+            text = stringResource(
+                R.string.input_sensitivity
+            ),
+            style =
+                MaterialTheme.typography
+                    .labelLarge
+        )
+
+        Slider(
+            value = state.sensitivity,
+            onValueChange = onSensitivity,
+            valueRange = 0f..1f
+        )
+
+        Row(
+            modifier =
+                Modifier.fillMaxWidth(),
+            verticalAlignment =
+                Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(
+                    R.string.haptic_in_tune
+                ),
+                modifier =
+                    Modifier.weight(1f)
+            )
+            Switch(
+                checked =
+                    state.hapticEnabled,
+                onCheckedChange = onHaptic
+            )
+        }
+    }
+}
+
+@Composable
+private fun MicrophonePermissionCard(
+    onRequestPermission: () -> Unit
+) {
+    SettingsCard {
+        Icon(
+            imageVector = Icons.Rounded.Mic,
+            contentDescription = null
+        )
+
+        Text(
+            text = stringResource(
+                R.string.microphone_access
+            ),
+            style =
+                MaterialTheme.typography
+                    .titleLarge
+        )
+
+        Text(
+            text = stringResource(
+                R.string
+                    .microphone_access_description
+            ),
+            textAlign = TextAlign.Center,
+            color =
+                MaterialTheme.colorScheme
+                    .onSurfaceVariant
+        )
+
+        Button(
+            onClick = onRequestPermission
+        ) {
+            Text(
+                stringResource(
+                    R.string.allow_microphone
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsCard(
+    content:
+        @Composable Column.() -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            containerColor =
+                MaterialTheme.colorScheme
+                    .surfaceContainerLow
         )
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.reference_pitch),
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Text(
-                text = "A4 = " + a4Hz.toInt() + " Hz",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Slider(
-                value = a4Hz.toFloat(),
-                onValueChange = {
-                    onReferencePitchChange(it.toDouble())
-                },
-                valueRange =
-                    MIN_REFERENCE_PITCH..MAX_REFERENCE_PITCH
-            )
-        }
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(12.dp),
+            content = content
+        )
     }
+}
+
+@Composable
+private fun ChoiceRow(
+    content:
+        @Composable Row.() -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(
+                rememberScrollState()
+            ),
+        horizontalArrangement =
+            Arrangement.spacedBy(8.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun SectionTitle(
+    text: String
+) {
+    Text(
+        text = text,
+        style =
+            MaterialTheme.typography
+                .titleMedium
+    )
 }

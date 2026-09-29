@@ -43,6 +43,12 @@
     <string name="tuning">チューニング</string>
     <string name="reference_pitch">基準ピッチ</string>
     <string name="tuner_error">マイク入力でエラーが発生しました</string>
+    <string name="target_string">対象弦</string>
+    <string name="auto">Auto</string>
+    <string name="reference_tones">基準音を鳴らす</string>
+    <string name="string_number">第%1$d弦</string>
+    <string name="input_sensitivity">入力感度</string>
+    <string name="haptic_in_tune">音程が合ったら振動</string>
 
     <string name="search_chords">コードを検索</string>
     <string name="all">すべて</string>
