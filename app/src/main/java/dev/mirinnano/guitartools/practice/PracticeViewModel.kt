@@ -275,25 +275,25 @@ class PracticeViewModel(
             var targetIndex = 0
             var beatInStep = 0
 
-            state.progression
-                .forEachIndexed {
-                        index,
-                        step ->
-
-                    if (
-                        remaining <
-                        step.beats
-                    ) {
-                        targetIndex =
-                            index
-                        beatInStep =
-                            remaining
-                        return@forEachIndexed
-                    }
-
-                    remaining -=
-                        step.beats
+            for (
+                (index, step) in
+                state.progression
+                    .withIndex()
+            ) {
+                if (
+                    remaining <
+                    step.beats
+                ) {
+                    targetIndex =
+                        index
+                    beatInStep =
+                        remaining
+                    break
                 }
+
+                remaining -=
+                    step.beats
+            }
 
             state.copy(
                 currentStepIndex =
