@@ -7,6 +7,7 @@ import dev.mirinnano.guitartools.audio.TunerConfig
 import dev.mirinnano.guitartools.audio.TunerEngine
 import dev.mirinnano.guitartools.audio.TunerReader
 import dev.mirinnano.guitartools.audio.YinPitchDetector
+import dev.mirinnano.guitartools.music.Tuning
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,7 +34,7 @@ class TunerViewModel(
         }
     }
 
-    fun setTuning(tuning: dev.mirinnano.guitartools.music.Tuning) {
+    fun setTuning(tuning: Tuning) {
         _uiState.update {
             it.copy(selectedTuning = tuning)
         }
