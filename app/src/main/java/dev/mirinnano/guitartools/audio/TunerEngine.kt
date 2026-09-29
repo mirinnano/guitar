@@ -7,34 +7,43 @@ import kotlinx.coroutines.flow.mapNotNull
 
 data class TunerConfig(
     val a4Hz: Double = 440.0,
-    val minimumRms: Double = 0.008
+    val minimumRms: Double = 0.008,
+    val smoothingWindow: Int = 5
 ) {
     init {
         require(a4Hz in 400.0..480.0)
         require(minimumRms >= 0.0)
+        require(smoothingWindow >= 1 && smoothingWindow % 2 == 1)
     }
 }
 
 class TunerEngine(
     private val source: PcmSource,
     private val pitchDetector: PitchDetector = YinPitchDetector()
-) {
-    fun readings(config: TunerConfig = TunerConfig()): Flow<PitchReading> =
-        source.frames().mapNotNull { frame ->
+) : TunerReader {
+
+    override fun readings(config: TunerConfig): Flow<PitchReading> {
+        val smoother = MedianFrequencySmoother(config.smoothingWindow)
+
+        return source.frames().mapNotNull { frame ->
             if (rms(frame.samples) < config.minimumRms) {
+                smoother.clear()
                 return@mapNotNull null
             }
 
-            val frequency = pitchDetector.detect(
+            val detected = pitchDetector.detect(
                 samples = frame.samples,
                 sampleRate = frame.sampleRate
             ) ?: return@mapNotNull null
 
+            val smoothed = smoother.add(detected)
+
             Pitch.analyze(
-                frequencyHz = frequency,
+                frequencyHz = smoothed,
                 a4Hz = config.a4Hz
             )
         }
+    }
 
     private fun rms(samples: FloatArray): Double {
         if (samples.isEmpty()) return 0.0
