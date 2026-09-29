@@ -126,6 +126,53 @@ class PracticeViewModelTest {
         )
     }
 
+
+    @Test
+    fun backingTrackOffsetDelaysChordSync() {
+        val viewModel =
+            PracticeViewModel(
+                metronome =
+                    FakeMetronomePlayer(),
+                songProvider =
+                    FakeSongProvider()
+            )
+
+        viewModel.setBpm(80)
+        viewModel.setSyncOffsetMs(
+            3_000L
+        )
+
+        viewModel.syncToPlaybackPosition(
+            3_000L
+        )
+
+        assertEquals(
+            0,
+            viewModel.uiState.value
+                .currentStepIndex
+        )
+        assertEquals(
+            0,
+            viewModel.uiState.value
+                .beatInStep
+        )
+
+        viewModel.syncToPlaybackPosition(
+            6_000L
+        )
+
+        assertEquals(
+            1,
+            viewModel.uiState.value
+                .currentStepIndex
+        )
+        assertEquals(
+            0,
+            viewModel.uiState.value
+                .beatInStep
+        )
+    }
+
     @Test
     fun selectingSongAppliesAvailableBpm() {
         val viewModel =
