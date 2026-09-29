@@ -260,15 +260,15 @@ class PracticeViewModel(
             }
 
             val absoluteBeat =
-                (
-                    positionMs.toDouble() *
-                        state.bpm /
-                        60_000.0
-                    ).toInt()
-                    .coerceAtLeast(0)
-                    .coerceAtMost(
-                        totalBeats - 1
-                    )
+                Math.floorMod(
+                    (
+                        positionMs.toDouble() *
+                            state.bpm /
+                            60_000.0
+                        ).toInt()
+                        .coerceAtLeast(0),
+                    totalBeats
+                )
 
             var remaining =
                 absoluteBeat
@@ -304,11 +304,16 @@ class PracticeViewModel(
         }
     }
 
-    fun togglePlayback() {
+    fun togglePlayback(
+        syncToBackingTrack: Boolean = false
+    ) {
         if (_uiState.value.isPlaying) {
             stop()
         } else {
-            start()
+            start(
+                syncToBackingTrack =
+                    syncToBackingTrack
+            )
         }
     }
 
@@ -321,7 +326,9 @@ class PracticeViewModel(
         }
     }
 
-    private fun start() {
+    private fun start(
+        syncToBackingTrack: Boolean
+    ) {
         val state = _uiState.value
 
         if (
@@ -360,7 +367,14 @@ class PracticeViewModel(
                             .defaultAccents(
                                 current.beatsPerBar
                             ),
-                    countInBars = 1
+                    countInBars =
+                        if (
+                            syncToBackingTrack
+                        ) {
+                            0
+                        } else {
+                            1
+                        }
                 )
             },
             onBeat = ::onBeat,
