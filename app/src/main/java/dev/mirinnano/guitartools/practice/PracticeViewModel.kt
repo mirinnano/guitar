@@ -50,6 +50,23 @@ class PracticeViewModel(
         }
     }
 
+    fun setBackingTrackSync(enabled: Boolean) {
+        _uiState.update {
+            it.copy(syncBackingTrack = enabled)
+        }
+    }
+
+    fun setSyncOffsetMs(value: Long) {
+        _uiState.update {
+            it.copy(
+                syncOffsetMs = value.coerceIn(
+                    0L,
+                    60_000L
+                )
+            )
+        }
+    }
+
     fun setImportText(text: String) {
         _uiState.update {
             it.copy(importText = text)
@@ -259,10 +276,14 @@ class PracticeViewModel(
                 return@update state
             }
 
+            val adjustedPosition =
+                (positionMs - state.syncOffsetMs)
+                    .coerceAtLeast(0L)
+
             val absoluteBeat =
                 Math.floorMod(
                     (
-                        positionMs.toDouble() *
+                        adjustedPosition.toDouble() *
                             state.bpm /
                             60_000.0
                         ).toInt()
