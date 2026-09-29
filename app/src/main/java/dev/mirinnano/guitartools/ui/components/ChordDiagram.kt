@@ -14,10 +14,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import dev.mirinnano.guitartools.R
 import dev.mirinnano.guitartools.music.ChordShape
+
+private const val STRING_COUNT = 6
+private const val DISPLAYED_FRET_COUNT = 5
 
 @Composable
 fun ChordDiagram(
@@ -25,49 +30,49 @@ fun ChordDiagram(
     modifier: Modifier = Modifier
 ) {
     val lineColor = MaterialTheme.colorScheme.onSurface
-    val dotColor = MaterialTheme.colorScheme.primary
+    val markerColor = MaterialTheme.colorScheme.primary
+    val description = stringResource(
+        R.string.chord_diagram_description,
+        shape.name
+    )
 
     Column(
         modifier = modifier.semantics {
-            contentDescription = shape.name + " chord diagram"
+            contentDescription = description
         },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            shape.frets.forEach { fret ->
-                Text(
-                    text = when {
-                        fret < 0 -> "×"
-                        fret == 0 -> "○"
-                        else -> " "
-                    },
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
-        }
+        OpenAndMutedStrings(shape)
 
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(164.dp)
         ) {
-            val insetX = 8.dp.toPx()
-            val insetY = 4.dp.toPx()
-            val left = insetX
-            val right = size.width - insetX
-            val top = insetY
-            val bottom = size.height - insetY
-            val stringSpacing = (right - left) / 5f
-            val fretSpacing = (bottom - top) / 5f
+            val horizontalInset = 8.dp.toPx()
+            val verticalInset = 4.dp.toPx()
 
-            for (string in 0..5) {
-                val x = left + string * stringSpacing
+            val left = horizontalInset
+            val right = size.width - horizontalInset
+            val top = verticalInset
+            val bottom = size.height - verticalInset
+
+            val stringSpacing = (right - left) / (STRING_COUNT - 1)
+            val fretSpacing = (bottom - top) / DISPLAYED_FRET_COUNT
+
+            fun xForStringNumber(stringNumber: Int): Float {
+                val stringIndex = STRING_COUNT - stringNumber
+                return left + stringIndex * stringSpacing
+            }
+
+            fun yForFret(absoluteFret: Int): Float {
+                val relativeFret = absoluteFret - shape.baseFret + 1
+                return top + (relativeFret - 0.5f) * fretSpacing
+            }
+
+            repeat(STRING_COUNT) { stringIndex ->
+                val x = left + stringIndex * stringSpacing
                 drawLine(
                     color = lineColor,
                     start = Offset(x, top),
@@ -77,13 +82,16 @@ fun ChordDiagram(
                 )
             }
 
-            for (fretLine in 0..5) {
+            for (fretLine in 0..DISPLAYED_FRET_COUNT) {
                 val y = top + fretLine * fretSpacing
                 drawLine(
                     color = lineColor,
                     start = Offset(left, y),
                     end = Offset(right, y),
-                    strokeWidth = if (fretLine == 0 && shape.baseFret == 1) {
+                    strokeWidth = if (
+                        fretLine == 0 &&
+                        shape.baseFret == 1
+                    ) {
                         4.dp.toPx()
                     } else {
                         1.5.dp.toPx()
@@ -92,26 +100,56 @@ fun ChordDiagram(
                 )
             }
 
+            shape.barres.forEach { barre ->
+                val relativeFret = barre.fret - shape.baseFret + 1
+                if (relativeFret !in 1..DISPLAYED_FRET_COUNT) {
+                    return@forEach
+                }
+
+                drawLine(
+                    color = markerColor,
+                    start = Offset(
+                        xForStringNumber(barre.fromString),
+                        yForFret(barre.fret)
+                    ),
+                    end = Offset(
+                        xForStringNumber(barre.toString),
+                        yForFret(barre.fret)
+                    ),
+                    strokeWidth = 15.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
+
             shape.frets.forEachIndexed { stringIndex, absoluteFret ->
                 if (absoluteFret <= 0) return@forEachIndexed
 
-                val relativeFret = absoluteFret - shape.baseFret + 1
-                if (relativeFret !in 1..5) return@forEachIndexed
+                val relativeFret =
+                    absoluteFret - shape.baseFret + 1
 
-                val x = left + stringIndex * stringSpacing
-                val y = top + (relativeFret - 0.5f) * fretSpacing
+                if (relativeFret !in 1..DISPLAYED_FRET_COUNT) {
+                    return@forEachIndexed
+                }
+
+                val stringNumber = STRING_COUNT - stringIndex
 
                 drawCircle(
-                    color = dotColor,
-                    radius = 8.dp.toPx(),
-                    center = Offset(x, y)
+                    color = markerColor,
+                    radius = 7.dp.toPx(),
+                    center = Offset(
+                        xForStringNumber(stringNumber),
+                        yForFret(absoluteFret)
+                    )
                 )
             }
         }
 
         if (shape.baseFret > 1) {
             Text(
-                text = "Fret ${shape.baseFret}",
+                text = stringResource(
+                    R.string.fret_number,
+                    shape.baseFret
+                ),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -124,5 +162,28 @@ fun ChordDiagram(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun OpenAndMutedStrings(
+    shape: ChordShape
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        shape.frets.forEach { fret ->
+            Text(
+                text = when {
+                    fret < 0 -> "×"
+                    fret == 0 -> "○"
+                    else -> " "
+                },
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
     }
 }
