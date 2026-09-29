@@ -3,6 +3,7 @@ package dev.mirinnano.guitartools.ui.chords
 import androidx.annotation.StringRes
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -163,63 +165,65 @@ private fun ChordCard(
     shape: ChordShape
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = shape.name,
-                    style = MaterialTheme.typography.headlineMedium
-                )
+            Text(
+                text = shape.name,
+                style = MaterialTheme.typography.headlineMedium
+            )
 
-                Text(
-                    text = shape.chord.notes.joinToString(" · ") {
-                        it.displayName
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
+            Text(
+                text = shape.chord.notes.joinToString(" · ") {
+                    it.displayName
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
 
-                Text(
-                    text = shape.frets.joinToString("  ") { fret ->
-                        when {
-                            fret < 0 -> "×"
-                            fret == 0 -> "0"
-                            else -> fret.toString()
-                        }
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Text(
+                text = shape.frets.joinToString("  ") { fret ->
+                    when {
+                        fret < 0 -> "×"
+                        fret == 0 -> "0"
+                        else -> fret.toString()
+                    }
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
+            Text(
+                text = stringResource(R.string.finger_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (shape.barres.isNotEmpty()) {
                 Text(
-                    text = stringResource(R.string.finger_hint),
+                    text = stringResource(R.string.barre_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-
-                if (shape.barres.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.barre_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
 
-            ChordDiagram(
-                shape = shape,
-                modifier = Modifier.width(156.dp)
-            )
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                ChordDiagram(
+                    shape = shape,
+                    modifier = Modifier.width(180.dp)
+                )
+            }
         }
     }
 }
