@@ -1,66 +1,58 @@
 # Guitar Tools
 
-A small Android guitar utility app built with Kotlin and Jetpack Compose.
+Kotlin + Jetpack Compose で作る、軽量なAndroid向けギターツールです。
 
-## Current scope
+## 4つの機能
 
-The first version intentionally focuses on four tools:
-
-- **Metronome**
+- **メトロノーム**
   - 30–300 BPM
-  - BPM slider and fine adjustments
+  - ±1 / ±5 BPM
   - Tap tempo
-  - Beats per bar
-  - First-beat accent
-  - Low-latency `AudioTrack` playback
+  - 拍数設定
+  - 1拍目アクセント
+  - `AudioTrack`によるPCM再生
 
-- **Tuner**
-  - Microphone capture with source fallbacks
-  - YIN pitch detection
-  - Median frequency smoothing
-  - Chromatic note / octave / cents display
-  - Standard, Drop D, E♭ Standard, and D Standard presets
-  - Automatic nearest-string target guidance
-  - Adjustable A4 reference pitch
-  - Noise gate and no-signal state
+- **チューナー**
+  - YINピッチ検出
+  - ノイズゲートと中央値平滑化
+  - Standard / Drop D / E♭ Standard / D Standard
+  - 最寄り弦とcent差を表示
+  - A4基準ピッチ調整
 
-- **Chords**
-  - Searchable common chord library
-  - Major, minor, dominant 7, maj7, and m7 filters
-  - Theory-derived chord tones
-  - Data-driven fret and finger positions
-  - Custom-drawn chord diagrams
+- **コード**
+  - Major / minor / 5 / 7 / maj7 / m7
+  - sus2 / sus4 / add9 / dim / aug
+  - オープンコードとバレーコード
+  - コード構成音
+  - 指番号とバレーを描画するコード図
 
-- **Fretboard**
+- **指板**
   - Standard tuning
-  - Frets 0–12
-  - Note names derived from MIDI pitch
-  - Note highlighting with Material 3 filter chips
-  - Custom fret/string drawing
+  - 0〜12フレット
+  - 音名ハイライト
 
-## Architecture
-
-The app keeps platform audio, music theory, state management, and UI separate.
+## 読みやすい構成
 
 ```text
 music/
-  Note
-  Pitch
-  Chord
-  Tuning
-  Fretboard
+  Note.kt           音名と周波数
+  Pitch.kt          周波数→音程
+  Chord.kt          コードのモデル
+  ChordLibrary.kt   実際に収録する押さえ方
+  Tuning.kt         チューニング
+  Fretboard.kt      指板計算
 
 audio/
-  PcmSource
-  MicrophonePcmSource
-  PitchDetector
-  YinPitchDetector
-  MedianFrequencySmoother
-  TunerReader
-  TunerEngine
-  MetronomePlayer
-  MetronomeEngine
-  TapTempoCalculator
+  MetronomePlayer.kt
+  MetronomeEngine.kt
+  TapTempoCalculator.kt
+  PcmSource.kt
+  MicrophonePcmSource.kt
+  PitchDetector.kt
+  YinPitchDetector.kt
+  MedianFrequencySmoother.kt
+  TunerReader.kt
+  TunerEngine.kt
 
 ui/
   metronome/
@@ -70,22 +62,52 @@ ui/
   components/
 ```
 
-UI state is exposed through `StateFlow` from ViewModels. Compose screens render state and send user events back to the ViewModels; they do not access `AudioRecord` or `AudioTrack` directly.
+UIはViewModelの`StateFlow`を表示するだけにし、`AudioTrack`や`AudioRecord`は`audio/`から外へ漏らさない構成です。
+
+## コードを追加する
+
+コード形は`music/ChordLibrary.kt`だけを編集します。
+
+たとえば新しいコードを追加する場合:
+
+```kotlin
+shape(
+    Note.F,
+    ChordQuality.MAJOR,
+    1, 3, 3, 2, 1, 1,
+    fingers = listOf(1, 3, 4, 2, 1, 1),
+    barres = listOf(
+        Barre(
+            fret = 1,
+            fromString = 6,
+            toString = 1
+        )
+    )
+)
+```
+
+フレット値は**6弦（Low E）→1弦（High E）**の順です。
+
+- `-1`: ミュート
+- `0`: 開放弦
+- `1以上`: フレット番号
+
+音楽理論側のコード種類を増やす場合だけ`ChordQuality`へintervalを追加します。
 
 ## UI
 
-The interface uses Material 3 components and conventions:
+Material 3をベースにしています。
 
-- `TopAppBar`
-- `NavigationBar`
-- Cards
-- Sliders
-- Filter chips
+- Center-aligned top app bar
+- Navigation bar
+- Tonal cards
+- Sliders / filter chips / switches
 - Dynamic color
-- Edge-to-edge layout
-- Semantics for custom-drawn diagrams
+- Edge-to-edge
+- 日本語UI
+- Adaptive / themed launcher icon
 
-## Build baseline
+## Build
 
 - Android Gradle Plugin 9.1.1
 - Gradle 9.3.1
@@ -93,17 +115,13 @@ The interface uses Material 3 components and conventions:
 - compileSdk 37
 - targetSdk 36
 - minSdk 26
-- Jetpack Compose with Material 3
 
-CI runs:
+CI:
 
 ```text
 :app:testDebugUnitTest
 :app:assembleDebug
 ```
 
-The Gradle Wrapper binary is not committed yet, so CI currently provisions Gradle 9.3.1 through `gradle/actions/setup-gradle`.
-
-## Status
-
-The current development branch is `backend-foundation` and is tracked in PR #1.
+mainのCIではdebug APKをArtifactとして出力します。
+`vX.Y.Z`タグでは署名済みrelease APKをGitHub Releasesへ公開します。
