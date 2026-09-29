@@ -11,7 +11,7 @@ class MetronomeViewModelTest {
     @Test
     fun clampsBpmAndControlsInjectedPlayer() {
         val player = FakeMetronomePlayer()
-        val viewModel = MetronomeViewModel(player)
+        val viewModel = MetronomeViewModel(player = player)
 
         viewModel.setBpm(500)
         assertEquals(300, viewModel.uiState.value.bpm)
@@ -24,6 +24,22 @@ class MetronomeViewModelTest {
         viewModel.stop()
         assertFalse(viewModel.uiState.value.isPlaying)
         assertFalse(player.isRunning)
+    }
+
+    @Test
+    fun tapTempoUsesMeasuredInterval() {
+        val player = FakeMetronomePlayer()
+        var now = 1_000L
+        val viewModel = MetronomeViewModel(
+            player = player,
+            nowMillis = { now }
+        )
+
+        viewModel.tapTempo()
+        now += 500L
+        viewModel.tapTempo()
+
+        assertEquals(120, viewModel.uiState.value.bpm)
     }
 
     private class FakeMetronomePlayer : MetronomePlayer {
