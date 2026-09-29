@@ -189,6 +189,7 @@ class PracticeViewModelTest {
                 title = "Song",
                 artist = "Artist",
                 bpm = 128,
+                timeSignature = "6/8",
                 sourceName = "test"
             )
         )
@@ -200,6 +201,16 @@ class PracticeViewModelTest {
         assertEquals(
             "Song",
             viewModel.uiState.value.title
+        )
+        assertEquals(
+            6,
+            viewModel.uiState.value
+                .beatsPerBar
+        )
+        assertEquals(
+            8,
+            viewModel.uiState.value
+                .beatUnit
         )
     }
 
