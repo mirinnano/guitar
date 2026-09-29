@@ -242,7 +242,9 @@ fun PracticeScreen(
             onToggle =
                 playbackViewModel::togglePlayback,
             onStop =
-                playbackViewModel::stop
+                playbackViewModel::stop,
+            onSeek =
+                playbackViewModel::seekTo
         )
 
         ChordProImportCard(
@@ -977,7 +979,8 @@ private fun AudioPlaybackCard(
     state: PlaybackUiState,
     onPickAudio: () -> Unit,
     onToggle: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    onSeek: (Long) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1023,6 +1026,45 @@ private fun AudioPlaybackCard(
                             MaterialTheme.typography.bodySmall
                     )
                 }
+            }
+
+            if (
+                state.hasMedia &&
+                state.durationMs != null
+            ) {
+                Text(
+                    text =
+                        formatPlaybackTime(
+                            state.positionMs
+                        ) +
+                            " / " +
+                            formatPlaybackTime(
+                                state.durationMs
+                            ),
+                    style =
+                        MaterialTheme.typography.bodySmall,
+                    color =
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Slider(
+                    value =
+                        state.positionMs
+                            .coerceIn(
+                                0L,
+                                state.durationMs
+                            )
+                            .toFloat(),
+                    onValueChange = {
+                        onSeek(it.toLong())
+                    },
+                    valueRange =
+                        0f..
+                            state.durationMs
+                                .toFloat(),
+                    enabled =
+                        state.durationMs > 0L
+                )
             }
 
             Button(
@@ -1094,4 +1136,20 @@ private fun AudioPlaybackCard(
             }
         }
     }
+}
+
+
+private fun formatPlaybackTime(
+    millis: Long
+): String {
+    val totalSeconds =
+        (millis.coerceAtLeast(0L) / 1_000L)
+            .toInt()
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+
+    return minutes.toString() +
+        ":" +
+        seconds.toString()
+            .padStart(2, '0')
 }
