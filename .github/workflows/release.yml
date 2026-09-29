@@ -78,6 +78,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          GETSONGBPM_API_KEY: ${{ secrets.GETSONGBPM_API_KEY }}
         run: gradle :app:assembleRelease --stacktrace
 
       - name: Verify APK signature
