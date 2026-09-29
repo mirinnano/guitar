@@ -119,6 +119,17 @@ fun PracticeScreen(
         }
     }
 
+    LaunchedEffect(
+        playbackState.positionMs,
+        playbackState.hasMedia
+    ) {
+        if (playbackState.hasMedia) {
+            viewModel.syncToPlaybackPosition(
+                playbackState.positionMs
+            )
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -137,9 +148,31 @@ fun PracticeScreen(
         PracticeTransport(
             state = state,
             onBpm = viewModel::setBpm,
-            onToggle =
-                viewModel::togglePlayback,
-            onRestart = viewModel::restart,
+            onToggle = {
+                if (state.isPlaying) {
+                    viewModel.togglePlayback(
+                        syncToBackingTrack =
+                            playbackState.hasMedia
+                    )
+                    if (playbackState.isPlaying) {
+                        playbackViewModel.pause()
+                    }
+                } else {
+                    viewModel.togglePlayback(
+                        syncToBackingTrack =
+                            playbackState.hasMedia
+                    )
+                    if (playbackState.hasMedia) {
+                        playbackViewModel.play()
+                    }
+                }
+            },
+            onRestart = {
+                viewModel.restart()
+                if (playbackState.hasMedia) {
+                    playbackViewModel.seekToStart()
+                }
+            },
             onAutoScroll =
                 viewModel::setAutoScroll
         )
