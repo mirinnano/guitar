@@ -1,5 +1,6 @@
 package dev.mirinnano.guitartools.ui.chords
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,9 +10,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -24,16 +27,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import dev.mirinnano.guitartools.music.ChordQuality
 import dev.mirinnano.guitartools.music.CommonChords
 import dev.mirinnano.guitartools.ui.components.ChordDiagram
 
 @Composable
 fun ChordsScreen(modifier: Modifier = Modifier) {
     var query by remember { mutableStateOf("") }
+    var selectedQuality by remember { mutableStateOf<ChordQuality?>(null) }
 
-    val chords = remember(query) {
-        CommonChords.all.filter {
-            query.isBlank() || it.name.contains(query, ignoreCase = true)
+    val chords = remember(query, selectedQuality) {
+        CommonChords.all.filter { shape ->
+            val matchesSearch =
+                query.isBlank() || shape.name.contains(query, ignoreCase = true)
+            val matchesQuality =
+                selectedQuality == null || shape.chord.quality == selectedQuality
+
+            matchesSearch && matchesQuality
         }
     }
 
@@ -57,13 +67,34 @@ fun ChordsScreen(modifier: Modifier = Modifier) {
             }
         )
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = selectedQuality == null,
+                onClick = { selectedQuality = null },
+                label = { Text("All") }
+            )
+
+            ChordQuality.entries.forEach { quality ->
+                FilterChip(
+                    selected = selectedQuality == quality,
+                    onClick = { selectedQuality = quality },
+                    label = { Text(quality.displayName) }
+                )
+            }
+        }
+
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
                 items = chords,
                 key = { it.name }
-            ) { chord ->
+            ) { shape ->
                 Card(
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -79,12 +110,20 @@ fun ChordsScreen(modifier: Modifier = Modifier) {
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = chord.name,
+                                text = shape.name,
                                 style = MaterialTheme.typography.headlineMedium
                             )
 
                             Text(
-                                text = chord.frets.joinToString("  ") { fret ->
+                                text = shape.chord.notes.joinToString(" · ") {
+                                    it.displayName
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            Text(
+                                text = shape.frets.joinToString("  ") { fret ->
                                     when {
                                         fret < 0 -> "×"
                                         fret == 0 -> "0"
@@ -103,7 +142,7 @@ fun ChordsScreen(modifier: Modifier = Modifier) {
                         }
 
                         ChordDiagram(
-                            shape = chord,
+                            shape = shape,
                             modifier = Modifier.width(156.dp)
                         )
                     }
