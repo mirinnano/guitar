@@ -1,5 +1,32 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+val releaseTag = System.getenv("GITHUB_REF_NAME")
+    ?.takeIf { it.matches(Regex("""^v\d+\.\d+\.\d+$""")) }
+
+val releaseVersionName = releaseTag?.removePrefix("v") ?: "0.1.0"
+val releaseVersionParts = releaseVersionName
+    .split(".")
+    .mapNotNull { it.toIntOrNull() }
+
+val releaseVersionCode = if (releaseVersionParts.size == 3) {
+    val (major, minor, patch) = releaseVersionParts
+    major * 10_000 + minor * 100 + patch
+} else {
+    1
+}
+
+val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+val releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+
+val hasReleaseSigning = listOf(
+    releaseKeystorePath,
+    releaseKeystorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword
+).all { !it.isNullOrBlank() }
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -13,8 +40,28 @@ android {
         applicationId = "dev.mirinnano.guitartools"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
+    }
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(requireNotNull(releaseKeystorePath))
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 
     buildFeatures {
