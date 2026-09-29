@@ -8,51 +8,83 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MetronomeViewModelTest {
+
     @Test
-    fun clampsBpmAndControlsInjectedPlayer() {
+    fun bpmIsClampedAndPlaybackIsControlled() {
         val player = FakeMetronomePlayer()
         val viewModel = MetronomeViewModel(player = player)
 
         viewModel.setBpm(500)
-        assertEquals(300, viewModel.uiState.value.bpm)
 
-        viewModel.start()
+        assertEquals(
+            MetronomeConfig.MAX_BPM,
+            viewModel.uiState.value.bpm
+        )
+
+        viewModel.togglePlayback()
+
         assertTrue(viewModel.uiState.value.isPlaying)
         assertTrue(player.isRunning)
-        assertEquals(300, player.configProvider?.invoke()?.bpm)
+        assertEquals(
+            MetronomeConfig.MAX_BPM,
+            player.configProvider?.invoke()?.bpm
+        )
 
-        viewModel.stop()
+        viewModel.togglePlayback()
+
         assertFalse(viewModel.uiState.value.isPlaying)
         assertFalse(player.isRunning)
     }
 
     @Test
     fun tapTempoUsesMeasuredInterval() {
-        val player = FakeMetronomePlayer()
         var now = 1_000L
         val viewModel = MetronomeViewModel(
-            player = player,
+            player = FakeMetronomePlayer(),
             nowMillis = { now }
         )
 
-        viewModel.tapTempo()
+        viewModel.registerTempoTap()
         now += 500L
-        viewModel.tapTempo()
+        viewModel.registerTempoTap()
 
         assertEquals(120, viewModel.uiState.value.bpm)
     }
 
+    @Test
+    fun playbackFailureIsExposedToUi() {
+        val player = FakeMetronomePlayer()
+        val viewModel = MetronomeViewModel(player = player)
+
+        viewModel.togglePlayback()
+        player.fail(IllegalStateException("test"))
+
+        assertFalse(viewModel.uiState.value.isPlaying)
+        assertTrue(viewModel.uiState.value.playbackFailed)
+    }
+
     private class FakeMetronomePlayer : MetronomePlayer {
         override var isRunning: Boolean = false
-        var configProvider: (() -> MetronomeConfig)? = null
 
-        override fun start(configProvider: () -> MetronomeConfig) {
+        var configProvider: (() -> MetronomeConfig)? = null
+        private var onError: ((Throwable) -> Unit)? = null
+
+        override fun start(
+            configProvider: () -> MetronomeConfig,
+            onError: (Throwable) -> Unit
+        ) {
             this.configProvider = configProvider
+            this.onError = onError
             isRunning = true
         }
 
         override fun stop() {
             isRunning = false
+        }
+
+        fun fail(error: Throwable) {
+            isRunning = false
+            onError?.invoke(error)
         }
     }
 }
