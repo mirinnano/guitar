@@ -34,11 +34,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.mirinnano.guitartools.R
@@ -46,6 +49,7 @@ import dev.mirinnano.guitartools.audio.BeatAccent
 import dev.mirinnano.guitartools.audio.ClickSound
 import dev.mirinnano.guitartools.audio.MetronomeConfig
 import dev.mirinnano.guitartools.audio.MetronomeSubdivision
+import dev.mirinnano.guitartools.audio.ScreenOffMetronomePlayer
 
 private val TempoSteps =
     listOf(-5, -1, 1, 5)
@@ -67,13 +71,36 @@ private val MeterPresets = listOf(
 
 @Composable
 fun MetronomeScreen(
-    modifier: Modifier = Modifier,
-    viewModel: MetronomeViewModel = viewModel()
+    modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
+    val factory = remember(
+        context.applicationContext
+    ) {
+        object :
+            ViewModelProvider.Factory {
+
+            override fun <T : ViewModel> create(
+                modelClass: Class<T>
+            ): T {
+                @Suppress("UNCHECKED_CAST")
+                return MetronomeViewModel(
+                    player =
+                        ScreenOffMetronomePlayer(
+                            context.applicationContext
+                        )
+                ) as T
+            }
+        }
+    }
+
+    val viewModel:
+        MetronomeViewModel =
+        viewModel(factory = factory)
+
     val state by
         viewModel.uiState.collectAsStateWithLifecycle()
-
-    val context = LocalContext.current
     val bluetoothAudioConnected =
         isBluetoothAudioConnected(context)
 
