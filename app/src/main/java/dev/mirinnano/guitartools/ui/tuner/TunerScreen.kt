@@ -7,7 +7,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -657,7 +659,7 @@ private fun MicrophonePermissionCard(
 @Composable
 private fun SettingsCard(
     content:
-        @Composable Column.() -> Unit
+        @Composable ColumnScope.() -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -681,7 +683,7 @@ private fun SettingsCard(
 @Composable
 private fun ChoiceRow(
     content:
-        @Composable Row.() -> Unit
+        @Composable RowScope.() -> Unit
 ) {
     Row(
         modifier = Modifier
