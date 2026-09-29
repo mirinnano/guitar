@@ -16,6 +16,20 @@
     <string name="start">開始</string>
     <string name="stop">停止</string>
     <string name="metronome_error">メトロノームを開始できませんでした</string>
+    <string name="rhythm_settings">リズム設定</string>
+    <string name="time_signature">拍子</string>
+    <string name="subdivision">サブディビジョン</string>
+    <string name="beat_accents">拍ごとのアクセント</string>
+    <string name="click_sound">クリック音</string>
+    <string name="count_in">カウントイン</string>
+    <string name="off">OFF</string>
+    <string name="bars_count">%1$d小節</string>
+    <string name="speed_trainer">Speed Trainer</string>
+    <string name="speed_trainer_description">指定した小節数ごとにBPMを自動で上げます。</string>
+    <string name="start_bpm">開始BPM</string>
+    <string name="goal_bpm">目標BPM</string>
+    <string name="step_bpm">増加BPM</string>
+    <string name="bars_per_step">増加までの小節数</string>
 
     <string name="microphone_access">マイクへのアクセス</string>
     <string name="microphone_access_description">チューナーでギターの音程を検出するためにマイクを使用します。</string>

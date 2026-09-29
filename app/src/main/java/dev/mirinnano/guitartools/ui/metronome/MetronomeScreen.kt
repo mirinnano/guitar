@@ -1,12 +1,15 @@
 package dev.mirinnano.guitartools.ui.metronome
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
@@ -16,9 +19,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,34 +36,66 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.mirinnano.guitartools.R
+import dev.mirinnano.guitartools.audio.BeatAccent
+import dev.mirinnano.guitartools.audio.ClickSound
 import dev.mirinnano.guitartools.audio.MetronomeConfig
+import dev.mirinnano.guitartools.audio.MetronomeSubdivision
 
-private val TempoSteps = listOf(-5, -1, 1, 5)
+private val TempoSteps =
+    listOf(-5, -1, 1, 5)
+
+private data class MeterPreset(
+    val beats: Int,
+    val unit: Int
+) {
+    val label: String
+        get() = "$beats/$unit"
+}
+
+private val MeterPresets = listOf(
+    MeterPreset(4, 4),
+    MeterPreset(3, 4),
+    MeterPreset(6, 8),
+    MeterPreset(2, 4)
+)
 
 @Composable
 fun MetronomeScreen(
     modifier: Modifier = Modifier,
     viewModel: MetronomeViewModel = viewModel()
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val state by
+        viewModel.uiState.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+            .verticalScroll(
+                rememberScrollState()
+            )
+            .padding(
+                horizontal = 20.dp,
+                vertical = 16.dp
+            ),
+        verticalArrangement =
+            Arrangement.spacedBy(16.dp)
     ) {
-        TempoCard(bpm = state.bpm)
+        TempoCard(
+            state = state
+        )
+
+        BeatIndicator(
+            state = state
+        )
 
         Slider(
             value = state.bpm.toFloat(),
-            onValueChange = { value ->
-                viewModel.setBpm(value.toInt())
+            onValueChange = {
+                viewModel.setBpm(it.toInt())
             },
-            valueRange = MetronomeConfig.MIN_BPM.toFloat()..
-                MetronomeConfig.MAX_BPM.toFloat(),
-            modifier = Modifier.fillMaxWidth()
+            valueRange =
+                MetronomeConfig.MIN_BPM.toFloat()..
+                    MetronomeConfig.MAX_BPM.toFloat()
         )
 
         TempoStepButtons(
@@ -66,78 +103,167 @@ fun MetronomeScreen(
         )
 
         FilledTonalButton(
-            onClick = viewModel::registerTempoTap,
+            onClick =
+                viewModel::registerTempoTap,
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(
-                imageVector = Icons.Rounded.TouchApp,
+                imageVector =
+                    Icons.Rounded.TouchApp,
                 contentDescription = null
             )
             Text(
-                text = stringResource(R.string.tap_tempo),
-                modifier = Modifier.padding(start = 8.dp)
+                text = stringResource(
+                    R.string.tap_tempo
+                ),
+                modifier =
+                    Modifier.padding(start = 8.dp)
             )
         }
 
         if (state.playbackFailed) {
             PlaybackError(
-                onDismiss = viewModel::dismissPlaybackError
+                onDismiss =
+                    viewModel::dismissPlaybackError
             )
         }
 
         Button(
-            onClick = viewModel::togglePlayback,
+            onClick =
+                viewModel::togglePlayback,
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(
-                imageVector = if (state.isPlaying) {
-                    Icons.Rounded.Pause
-                } else {
-                    Icons.Rounded.PlayArrow
-                },
+                imageVector =
+                    if (state.isPlaying) {
+                        Icons.Rounded.Pause
+                    } else {
+                        Icons.Rounded.PlayArrow
+                    },
                 contentDescription = null
             )
             Text(
                 text = stringResource(
-                    if (state.isPlaying) R.string.stop else R.string.start
+                    if (state.isPlaying) {
+                        R.string.stop
+                    } else {
+                        R.string.start
+                    }
                 ),
-                modifier = Modifier.padding(start = 8.dp)
+                modifier =
+                    Modifier.padding(start = 8.dp)
             )
         }
 
-        BeatSettingsCard(
-            beatsPerBar = state.beatsPerBar,
-            accentFirstBeat = state.accentFirstBeat,
-            onBeatsPerBarChange = viewModel::setBeatsPerBar,
-            onAccentChange = viewModel::setAccentFirstBeat
+        RhythmSettingsCard(
+            state = state,
+            onMeter = viewModel::setTimeSignature,
+            onSubdivision =
+                viewModel::setSubdivision,
+            onAccent =
+                viewModel::cycleAccent,
+            onClickSound =
+                viewModel::setClickSound,
+            onCountIn =
+                viewModel::setCountInBars
+        )
+
+        SpeedTrainerCard(
+            state = state,
+            viewModel = viewModel
         )
     }
 }
 
 @Composable
-private fun TempoCard(bpm: Int) {
+private fun TempoCard(
+    state: MetronomeUiState
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor =
+                MaterialTheme.colorScheme
+                    .primaryContainer
         )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment =
+                Alignment.CenterHorizontally
         ) {
             Text(
-                text = bpm.toString(),
-                style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                text = state.bpm.toString(),
+                style =
+                    MaterialTheme.typography
+                        .displayLarge,
+                color =
+                    MaterialTheme.colorScheme
+                        .onPrimaryContainer
             )
             Text(
-                text = stringResource(R.string.bpm),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                text = stringResource(
+                    R.string.bpm
+                ),
+                style =
+                    MaterialTheme.typography
+                        .labelLarge,
+                color =
+                    MaterialTheme.colorScheme
+                        .onPrimaryContainer
             )
+
+            if (state.isCountIn) {
+                Text(
+                    text = stringResource(
+                        R.string.count_in
+                    ),
+                    style =
+                        MaterialTheme.typography
+                            .labelMedium,
+                    color =
+                        MaterialTheme.colorScheme
+                            .onPrimaryContainer
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BeatIndicator(
+    state: MetronomeUiState
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement =
+            Arrangement.Center
+    ) {
+        repeat(state.beatsPerBar) { index ->
+            val active =
+                state.isPlaying &&
+                    state.currentBeat == index
+
+            Surface(
+                modifier = Modifier
+                    .padding(horizontal = 5.dp)
+                    .size(
+                        if (active) {
+                            22.dp
+                        } else {
+                            14.dp
+                        }
+                    ),
+                shape = CircleShape,
+                color = if (active) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme
+                        .surfaceContainerHighest
+                }
+            ) {}
         }
     }
 }
@@ -148,15 +274,22 @@ private fun TempoStepButtons(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement =
+            Arrangement.spacedBy(8.dp)
     ) {
         TempoSteps.forEach { step ->
             FilledTonalButton(
-                onClick = { onStep(step) },
+                onClick = {
+                    onStep(step)
+                },
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    text = if (step > 0) "+$step" else step.toString()
+                    if (step > 0) {
+                        "+$step"
+                    } else {
+                        step.toString()
+                    }
                 )
             }
         }
@@ -164,84 +297,353 @@ private fun TempoStepButtons(
 }
 
 @Composable
-private fun BeatSettingsCard(
-    beatsPerBar: Int,
-    accentFirstBeat: Boolean,
-    onBeatsPerBarChange: (Int) -> Unit,
-    onAccentChange: (Boolean) -> Unit
+private fun RhythmSettingsCard(
+    state: MetronomeUiState,
+    onMeter: (Int, Int) -> Unit,
+    onSubdivision:
+        (MetronomeSubdivision) -> Unit,
+    onAccent: (Int) -> Unit,
+    onClickSound: (ClickSound) -> Unit,
+    onCountIn: (Int) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            containerColor =
+                MaterialTheme.colorScheme
+                    .surfaceContainerLow
         )
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement =
+                Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = stringResource(R.string.beat_settings),
-                style = MaterialTheme.typography.titleMedium
+            SectionTitle(
+                stringResource(
+                    R.string.rhythm_settings
+                )
             )
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.beats_per_bar),
-                    modifier = Modifier.weight(1f)
+            Label(
+                stringResource(
+                    R.string.time_signature
                 )
-
-                FilledTonalButton(
-                    onClick = {
-                        onBeatsPerBarChange(beatsPerBar - 1)
-                    }
-                ) {
-                    Text("−")
-                }
-
-                Text(
-                    text = beatsPerBar.toString(),
-                    style = MaterialTheme.typography.titleLarge
-                )
-
-                FilledTonalButton(
-                    onClick = {
-                        onBeatsPerBarChange(beatsPerBar + 1)
-                    }
-                ) {
-                    Text("+")
+            )
+            ChoiceRow {
+                MeterPresets.forEach { meter ->
+                    FilterChip(
+                        selected =
+                            state.beatsPerBar ==
+                                meter.beats &&
+                                state.beatUnit ==
+                                meter.unit,
+                        onClick = {
+                            onMeter(
+                                meter.beats,
+                                meter.unit
+                            )
+                        },
+                        label = {
+                            Text(meter.label)
+                        }
+                    )
                 }
             }
 
+            Label(
+                stringResource(
+                    R.string.subdivision
+                )
+            )
+            ChoiceRow {
+                MetronomeSubdivision.entries
+                    .forEach { subdivision ->
+                        FilterChip(
+                            selected =
+                                state.subdivision ==
+                                    subdivision,
+                            onClick = {
+                                onSubdivision(
+                                    subdivision
+                                )
+                            },
+                            label = {
+                                Text(
+                                    subdivision.label
+                                )
+                            }
+                        )
+                    }
+            }
+
+            Label(
+                stringResource(
+                    R.string.beat_accents
+                )
+            )
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement =
+                    Arrangement.spacedBy(8.dp)
+            ) {
+                state.accents.forEachIndexed {
+                        index,
+                        accent ->
+
+                    FilledTonalButton(
+                        onClick = {
+                            onAccent(index)
+                        },
+                        modifier =
+                            Modifier.weight(1f)
+                    ) {
+                        Text(
+                            when (accent) {
+                                BeatAccent.ACCENT ->
+                                    "●"
+                                BeatAccent.NORMAL ->
+                                    "○"
+                                BeatAccent.MUTE ->
+                                    "–"
+                            }
+                        )
+                    }
+                }
+            }
+
+            Label(
+                stringResource(
+                    R.string.click_sound
+                )
+            )
+            ChoiceRow {
+                ClickSound.entries.forEach {
+                        sound ->
+                    FilterChip(
+                        selected =
+                            state.clickSound == sound,
+                        onClick = {
+                            onClickSound(sound)
+                        },
+                        label = {
+                            Text(
+                                when (sound) {
+                                    ClickSound.DIGITAL ->
+                                        "Digital"
+                                    ClickSound.WOOD ->
+                                        "Wood"
+                                    ClickSound.HI_HAT ->
+                                        "Hi-hat"
+                                }
+                            )
+                        }
+                    )
+                }
+            }
+
+            Label(
+                stringResource(
+                    R.string.count_in
+                )
+            )
+            ChoiceRow {
+                (0..2).forEach { bars ->
+                    FilterChip(
+                        selected =
+                            state.countInBars == bars,
+                        onClick = {
+                            onCountIn(bars)
+                        },
+                        label = {
+                            Text(
+                                if (bars == 0) {
+                                    stringResource(
+                                        R.string.off
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.bars_count,
+                                        bars
+                                    )
+                                }
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeedTrainerCard(
+    state: MetronomeUiState,
+    viewModel: MetronomeViewModel
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme
+                    .surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment =
+                    Alignment.CenterVertically
             ) {
                 Column(
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = stringResource(R.string.accent_first_beat)
+                    SectionTitle(
+                        stringResource(
+                            R.string.speed_trainer
+                        )
                     )
                     Text(
                         text = stringResource(
-                            R.string.accent_first_beat_description
+                            R.string.speed_trainer_description
                         ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style =
+                            MaterialTheme.typography
+                                .bodySmall,
+                        color =
+                            MaterialTheme.colorScheme
+                                .onSurfaceVariant
                     )
                 }
-
                 Switch(
-                    checked = accentFirstBeat,
-                    onCheckedChange = onAccentChange
+                    checked =
+                        state.speedTrainerEnabled,
+                    onCheckedChange =
+                        viewModel::setSpeedTrainerEnabled
+                )
+            }
+
+            if (state.speedTrainerEnabled) {
+                TrainerValue(
+                    label = stringResource(
+                        R.string.start_bpm
+                    ),
+                    value = state.speedStartBpm,
+                    range =
+                        MetronomeConfig.MIN_BPM..
+                            state.speedEndBpm,
+                    onChange =
+                        viewModel::setSpeedStartBpm
+                )
+
+                TrainerValue(
+                    label = stringResource(
+                        R.string.goal_bpm
+                    ),
+                    value = state.speedEndBpm,
+                    range =
+                        state.speedStartBpm..
+                            MetronomeConfig.MAX_BPM,
+                    onChange =
+                        viewModel::setSpeedEndBpm
+                )
+
+                TrainerValue(
+                    label = stringResource(
+                        R.string.step_bpm
+                    ),
+                    value = state.speedStepBpm,
+                    range = 1..20,
+                    onChange =
+                        viewModel::setSpeedStepBpm
+                )
+
+                TrainerValue(
+                    label = stringResource(
+                        R.string.bars_per_step
+                    ),
+                    value =
+                        state.speedBarsPerStep,
+                    range = 1..16,
+                    onChange =
+                        viewModel::setSpeedBarsPerStep
                 )
             }
         }
     }
+}
+
+@Composable
+private fun TrainerValue(
+    label: String,
+    value: Int,
+    range: IntRange,
+    onChange: (Int) -> Unit
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                label,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                value.toString(),
+                color =
+                    MaterialTheme.colorScheme
+                        .primary
+            )
+        }
+        Slider(
+            value = value.toFloat(),
+            onValueChange = {
+                onChange(it.toInt())
+            },
+            valueRange =
+                range.first.toFloat()..
+                    range.last.toFloat()
+        )
+    }
+}
+
+@Composable
+private fun ChoiceRow(
+    content: @Composable Row.() -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(
+                rememberScrollState()
+            ),
+        horizontalArrangement =
+            Arrangement.spacedBy(8.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun Label(text: String) {
+    Text(
+        text = text,
+        style =
+            MaterialTheme.typography.labelLarge,
+        color =
+            MaterialTheme.colorScheme
+                .onSurfaceVariant
+    )
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style =
+            MaterialTheme.typography.titleMedium
+    )
 }
 
 @Composable
@@ -251,18 +653,28 @@ private fun PlaybackError(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer
+            containerColor =
+                MaterialTheme.colorScheme
+                    .errorContainer
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(
+                    horizontal = 16.dp,
+                    vertical = 8.dp
+                ),
+            verticalAlignment =
+                Alignment.CenterVertically
         ) {
             Text(
-                text = stringResource(R.string.metronome_error),
-                color = MaterialTheme.colorScheme.onErrorContainer,
+                text = stringResource(
+                    R.string.metronome_error
+                ),
+                color =
+                    MaterialTheme.colorScheme
+                        .onErrorContainer,
                 modifier = Modifier.weight(1f)
             )
             TextButton(
