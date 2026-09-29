@@ -4,24 +4,33 @@ import androidx.lifecycle.ViewModel
 import dev.mirinnano.guitartools.audio.MetronomeConfig
 import dev.mirinnano.guitartools.audio.MetronomeEngine
 import dev.mirinnano.guitartools.audio.MetronomePlayer
+import dev.mirinnano.guitartools.audio.TapTempoCalculator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 class MetronomeViewModel(
-    private val player: MetronomePlayer = MetronomeEngine()
+    private val player: MetronomePlayer = MetronomeEngine(),
+    private val tapTempoCalculator: TapTempoCalculator = TapTempoCalculator(),
+    private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000L }
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MetronomeUiState())
     val uiState: StateFlow<MetronomeUiState> = _uiState.asStateFlow()
 
     fun setBpm(value: Int) {
-        _uiState.update { it.copy(bpm = value.coerceIn(30, 300)) }
+        tapTempoCalculator.reset()
+        updateBpm(value)
     }
 
     fun changeBpm(delta: Int) {
-        setBpm(_uiState.value.bpm + delta)
+        tapTempoCalculator.reset()
+        updateBpm(_uiState.value.bpm + delta)
+    }
+
+    fun tapTempo() {
+        tapTempoCalculator.tap(nowMillis())?.let(::updateBpm)
     }
 
     fun setBeatsPerBar(value: Int) {
@@ -54,6 +63,12 @@ class MetronomeViewModel(
     fun stop() {
         player.stop()
         _uiState.update { it.copy(isPlaying = false) }
+    }
+
+    private fun updateBpm(value: Int) {
+        _uiState.update {
+            it.copy(bpm = value.coerceIn(30, 300))
+        }
     }
 
     override fun onCleared() {
