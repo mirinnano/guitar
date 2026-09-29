@@ -113,17 +113,27 @@ class GetSongBpmProvider(
                     }
 
                 val sourceUrl =
-                    item.optString("uri")
-                        .takeIf {
+                    (
+                        item.optString("song_uri")
+                            .ifBlank {
+                                item.optString("uri")
+                            }
+                        ).takeIf {
                             it.startsWith("http")
                         }
 
                 add(
                     SongSearchResult(
                         id =
-                            item.optString("id"),
+                            item.optString("song_id")
+                                .ifBlank {
+                                    item.optString("id")
+                                },
                         title =
-                            item.optString("title"),
+                            item.optString("song_title")
+                                .ifBlank {
+                                    item.optString("title")
+                                },
                         artist =
                             artistName,
                         bpm =
