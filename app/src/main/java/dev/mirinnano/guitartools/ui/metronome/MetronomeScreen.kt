@@ -53,7 +53,9 @@ fun MetronomeScreen(
 
         Slider(
             value = state.bpm.toFloat(),
-            onValueChange = viewModel::setBpm,
+            onValueChange = { value ->
+                viewModel.setBpm(value.toInt())
+            },
             valueRange = MetronomeConfig.MIN_BPM.toFloat()..
                 MetronomeConfig.MAX_BPM.toFloat(),
             modifier = Modifier.fillMaxWidth()
