@@ -143,7 +143,9 @@ fun TunerScreen(
             ) {
                 Text(
                     text = reading?.let { readingValue ->
-                        readingValue.note.displayName + readingValue.octave
+                        readingValue.note.displayName(
+                            state.selectedTuning.accidentalPreference
+                        ) + readingValue.octave
                     } ?: "—",
                     style = MaterialTheme.typography.displayLarge
                 )
