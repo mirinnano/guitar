@@ -4,6 +4,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -611,7 +612,7 @@ private fun TrainerValue(
 
 @Composable
 private fun ChoiceRow(
-    content: @Composable Row.() -> Unit
+    content: @Composable RowScope.() -> Unit
 ) {
     Row(
         modifier = Modifier
