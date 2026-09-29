@@ -33,8 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.mirinnano.guitartools.R
 import dev.mirinnano.guitartools.music.ChordQuality
@@ -43,7 +41,7 @@ import dev.mirinnano.guitartools.music.CommonChords
 import dev.mirinnano.guitartools.music.Note
 import dev.mirinnano.guitartools.ui.components.ChordDiagram
 
-private const val CHORDS_PER_ROW = 4
+private const val CHORDS_PER_ROW = 2
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -247,39 +245,54 @@ private fun ChordGridRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement =
+            Arrangement.spacedBy(10.dp)
     ) {
         chords.forEach { shape ->
             Card(
                 onClick = {
                     onChordClick(shape)
                 },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(64.dp),
+                modifier = Modifier.weight(1f),
                 colors = CardDefaults.cardColors(
                     containerColor =
-                        MaterialTheme.colorScheme.surfaceContainerLow
+                        MaterialTheme.colorScheme
+                            .surfaceContainerLow
                 )
             ) {
-                Box(
+                Column(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 4.dp),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 10.dp,
+                            vertical = 12.dp
+                        ),
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally,
+                    verticalArrangement =
+                        Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         text = shape.name,
-                        style = MaterialTheme.typography.labelLarge,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        style =
+                            MaterialTheme.typography
+                                .titleMedium,
+                        maxLines = 1
+                    )
+
+                    ChordDiagram(
+                        shape = shape,
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        compact = true
                     )
                 }
             }
         }
 
-        repeat(CHORDS_PER_ROW - chords.size) {
+        repeat(
+            CHORDS_PER_ROW - chords.size
+        ) {
             Spacer(
                 modifier = Modifier.weight(1f)
             )
