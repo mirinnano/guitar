@@ -18,7 +18,8 @@ data class TuningTarget(
 data class Tuning(
     val id: String,
     val name: String,
-    val strings: List<StringTuning>
+    val strings: List<StringTuning>,
+    val accidentalPreference: AccidentalPreference = AccidentalPreference.SHARPS
 ) {
     init {
         require(strings.size == 6) { "Guitar tuning must contain six strings" }
@@ -84,7 +85,8 @@ data class Tuning(
                 StringTuning(3, 54, "G♭3"),
                 StringTuning(2, 58, "B♭3"),
                 StringTuning(1, 63, "E♭4")
-            )
+            ),
+            accidentalPreference = AccidentalPreference.FLATS
         )
 
         val DStandard = Tuning(
