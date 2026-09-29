@@ -242,6 +242,11 @@ class PracticeViewModel(
         song: SongSearchResult
     ) {
         _uiState.update { state ->
+            val meter =
+                parseTimeSignature(
+                    song.timeSignature
+                )
+
             state.copy(
                 selectedSong = song,
                 title = song.title,
@@ -251,7 +256,13 @@ class PracticeViewModel(
                     ).coerceIn(
                         MetronomeConfig.MIN_BPM,
                         MetronomeConfig.MAX_BPM
-                    )
+                    ),
+                beatsPerBar =
+                    meter?.first
+                        ?: state.beatsPerBar,
+                beatUnit =
+                    meter?.second
+                        ?: state.beatUnit
             )
         }
     }
@@ -381,6 +392,8 @@ class PracticeViewModel(
                     bpm = current.bpm,
                     beatsPerBar =
                         current.beatsPerBar,
+                    beatUnit =
+                        current.beatUnit,
                     subdivision =
                         MetronomeSubdivision.QUARTER,
                     accents =
@@ -463,6 +476,38 @@ class PracticeViewModel(
                 )
             }
         }
+    }
+
+    private fun parseTimeSignature(
+        value: String?
+    ): Pair<Int, Int>? {
+        val parts =
+            value
+                ?.trim()
+                ?.split("/")
+                ?: return null
+
+        if (parts.size != 2) {
+            return null
+        }
+
+        val beats =
+            parts[0].toIntOrNull()
+                ?: return null
+        val unit =
+            parts[1].toIntOrNull()
+                ?: return null
+
+        if (
+            beats !in
+            MetronomeConfig.MIN_BEATS_PER_BAR..
+                MetronomeConfig.MAX_BEATS_PER_BAR ||
+            unit !in setOf(2, 4, 8, 16)
+        ) {
+            return null
+        }
+
+        return beats to unit
     }
 
     override fun onCleared() {
