@@ -26,6 +26,8 @@ fun TunerGauge(
             .onPrimaryContainer
     val needleColor =
         MaterialTheme.colorScheme.primary
+    val inTuneColor =
+        MaterialTheme.colorScheme.tertiary
 
     Canvas(
         modifier = modifier
@@ -59,12 +61,32 @@ fun TunerGauge(
             )
         )
 
+        drawArc(
+            color = inTuneColor,
+            startAngle = 264f,
+            sweepAngle = 12f,
+            useCenter = false,
+            topLeft = Offset(
+                center.x - radius,
+                center.y - radius
+            ),
+            size = Size(
+                radius * 2f,
+                radius * 2f
+            ),
+            style = Stroke(
+                width = 8.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        )
+
         for (tick in -50..50 step 10) {
             val angle =
-                (-60.0 +
-                    (tick + 50) /
-                        100.0 *
-                        120.0
+                (
+                    210.0 +
+                        (tick + 50) /
+                            100.0 *
+                            120.0
                     ) * PI / 180.0
 
             val outer = Offset(
@@ -114,10 +136,11 @@ fun TunerGauge(
             ) ?: 0.0
 
         val needleAngle =
-            (-60.0 +
-                (clamped + 50.0) /
-                    100.0 *
-                    120.0
+            (
+                210.0 +
+                    (clamped + 50.0) /
+                        100.0 *
+                        120.0
                 ) * PI / 180.0
 
         val needleEnd = Offset(
