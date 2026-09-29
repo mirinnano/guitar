@@ -6,6 +6,7 @@
     <string name="tab_tuner">チューナー</string>
     <string name="tab_chords">コード</string>
     <string name="tab_fretboard">指板</string>
+    <string name="tab_practice">練習</string>
 
     <string name="bpm">BPM</string>
     <string name="tap_tempo">タップテンポ</string>
@@ -73,6 +74,17 @@
     <string name="chord_section_count">%1$dコード</string>
     <string name="chord_tones">構成音</string>
     <string name="chord_fingering">押さえ方</string>
+    <string name="progression">コード進行</string>
+    <string name="auto_scroll">自動スクロール</string>
+    <string name="add_chord">コードを追加</string>
+    <string name="add">追加</string>
+    <string name="search_song">曲を検索</string>
+    <string name="song_or_artist">曲名 / アーティスト</string>
+    <string name="search">検索</string>
+    <string name="searching">検索中…</string>
+    <string name="import_chordpro">ChordProを読み込む</string>
+    <string name="import_chordpro_description">自分で作成した、または利用許諾のあるChordProを貼り付けるとコード進行へ変換します。</string>
+    <string name="import_action">コード進行として読み込む</string>
 
     <string name="highlight_note">強調する音</string>
     <string name="fretboard_footer">0〜12フレット · Standard tuning</string>
