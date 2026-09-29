@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.School
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,6 +28,7 @@ import dev.mirinnano.guitartools.R
 import dev.mirinnano.guitartools.ui.chords.ChordsScreen
 import dev.mirinnano.guitartools.ui.fretboard.FretboardScreen
 import dev.mirinnano.guitartools.ui.metronome.MetronomeScreen
+import dev.mirinnano.guitartools.practice.PracticeScreen
 import dev.mirinnano.guitartools.ui.tuner.TunerScreen
 
 private enum class ToolTab(
@@ -36,7 +38,8 @@ private enum class ToolTab(
     Metronome(R.string.tab_metronome, Icons.Rounded.Timer),
     Tuner(R.string.tab_tuner, Icons.Rounded.GraphicEq),
     Chords(R.string.tab_chords, Icons.Rounded.LibraryMusic),
-    Fretboard(R.string.tab_fretboard, Icons.Rounded.GridOn)
+    Fretboard(R.string.tab_fretboard, Icons.Rounded.GridOn),
+    Practice(R.string.tab_practice, Icons.Rounded.School)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,6 +90,7 @@ fun GuitarToolsApp() {
             ToolTab.Tuner -> TunerScreen(screenModifier)
             ToolTab.Chords -> ChordsScreen(screenModifier)
             ToolTab.Fretboard -> FretboardScreen(screenModifier)
+            ToolTab.Practice -> PracticeScreen(screenModifier)
         }
     }
 }
