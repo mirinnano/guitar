@@ -28,6 +28,7 @@
     <string name="chromatic_offset">クロマチック差: %1$d cents</string>
     <string name="tuning">チューニング</string>
     <string name="reference_pitch">基準ピッチ</string>
+    <string name="tuner_error">マイク入力でエラーが発生しました</string>
 
     <string name="search_chords">コードを検索</string>
     <string name="all">すべて</string>
