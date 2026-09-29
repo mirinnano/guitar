@@ -32,6 +32,18 @@
     <string name="search_chords">コードを検索</string>
     <string name="all">すべて</string>
     <string name="finger_hint">図の下は使用する指番号です。</string>
+    <string name="barre_hint">太い横線はバレーです。</string>
+    <string name="quality_major">メジャー</string>
+    <string name="quality_minor">マイナー</string>
+    <string name="quality_power_5">5</string>
+    <string name="quality_dominant_7">7</string>
+    <string name="quality_major_7">maj7</string>
+    <string name="quality_minor_7">m7</string>
+    <string name="quality_sus_2">sus2</string>
+    <string name="quality_sus_4">sus4</string>
+    <string name="quality_add_9">add9</string>
+    <string name="quality_dim">dim</string>
+    <string name="quality_aug">aug</string>
 
     <string name="highlight_note">強調する音</string>
     <string name="fretboard_footer">0〜12フレット · Standard tuning</string>
