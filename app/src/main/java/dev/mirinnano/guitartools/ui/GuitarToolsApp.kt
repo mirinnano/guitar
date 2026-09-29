@@ -1,5 +1,6 @@
 package dev.mirinnano.guitartools.ui
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -20,58 +21,81 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import dev.mirinnano.guitartools.R
 import dev.mirinnano.guitartools.ui.chords.ChordsScreen
 import dev.mirinnano.guitartools.ui.fretboard.FretboardScreen
 import dev.mirinnano.guitartools.ui.metronome.MetronomeScreen
 import dev.mirinnano.guitartools.ui.tuner.TunerScreen
 
 private enum class ToolTab(
-    val title: String,
-    val label: String,
+    @StringRes val titleRes: Int,
     val icon: ImageVector
 ) {
-    Metronome("Metronome", "Metro", Icons.Rounded.Timer),
-    Tuner("Tuner", "Tuner", Icons.Rounded.GraphicEq),
-    Chords("Chords", "Chords", Icons.Rounded.LibraryMusic),
-    Fretboard("Fretboard", "Fretboard", Icons.Rounded.GridOn)
+    Metronome(
+        titleRes = R.string.tab_metronome,
+        icon = Icons.Rounded.Timer
+    ),
+    Tuner(
+        titleRes = R.string.tab_tuner,
+        icon = Icons.Rounded.GraphicEq
+    ),
+    Chords(
+        titleRes = R.string.tab_chords,
+        icon = Icons.Rounded.LibraryMusic
+    ),
+    Fretboard(
+        titleRes = R.string.tab_fretboard,
+        icon = Icons.Rounded.GridOn
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GuitarToolsApp() {
-    var selected by remember { mutableStateOf(ToolTab.Metronome) }
+    var selectedTab by remember {
+        mutableStateOf(ToolTab.Metronome)
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(selected.title) }
+                title = {
+                    Text(
+                        text = stringResource(selectedTab.titleRes)
+                    )
+                }
             )
         },
         bottomBar = {
             NavigationBar {
                 ToolTab.entries.forEach { tab ->
+                    val label = stringResource(tab.titleRes)
+
                     NavigationBarItem(
-                        selected = selected == tab,
-                        onClick = { selected = tab },
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
                         icon = {
                             Icon(
                                 imageVector = tab.icon,
-                                contentDescription = tab.title
+                                contentDescription = label
                             )
                         },
-                        label = { Text(tab.label) }
+                        label = {
+                            Text(label)
+                        }
                     )
                 }
             }
         }
-    ) { padding ->
-        val modifier = Modifier.padding(padding)
+    ) { contentPadding ->
+        val screenModifier = Modifier.padding(contentPadding)
 
-        when (selected) {
-            ToolTab.Metronome -> MetronomeScreen(modifier)
-            ToolTab.Tuner -> TunerScreen(modifier)
-            ToolTab.Chords -> ChordsScreen(modifier)
-            ToolTab.Fretboard -> FretboardScreen(modifier)
+        when (selectedTab) {
+            ToolTab.Metronome -> MetronomeScreen(screenModifier)
+            ToolTab.Tuner -> TunerScreen(screenModifier)
+            ToolTab.Chords -> ChordsScreen(screenModifier)
+            ToolTab.Fretboard -> FretboardScreen(screenModifier)
         }
     }
 }
