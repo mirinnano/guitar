@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -29,7 +30,7 @@ class TunerViewModelTest {
             octave = 4,
             cents = 0.0
         )
-        val reader = FakeTunerReader(expected)
+        val reader = FakeTunerReader(listOf(expected))
         val viewModel = TunerViewModel(reader)
 
         viewModel.start()
@@ -37,22 +38,41 @@ class TunerViewModelTest {
         assertTrue(viewModel.uiState.value.isListening)
         assertNotNull(viewModel.uiState.value.reading)
         assertEquals(Note.A, viewModel.uiState.value.reading?.note)
-        assertEquals(440.0, viewModel.uiState.value.reading?.frequencyHz ?: 0.0, 0.001)
     }
 
     @Test
-    fun referencePitchIsClamped() {
-        val viewModel = TunerViewModel(FakeTunerReader(null))
+    fun noSignalClearsPreviousReading() = runTest {
+        val expected = PitchReading(440.0, 69, Note.A, 4, 0.0)
+        val viewModel = TunerViewModel(
+            FakeTunerReader(listOf(expected, null))
+        )
+
+        viewModel.start()
+
+        assertNull(viewModel.uiState.value.reading)
+    }
+
+    @Test
+    fun referencePitchIsClampedWithoutRestartingReader() {
+        val reader = FakeTunerReader(emptyList())
+        val viewModel = TunerViewModel(reader)
 
         viewModel.setReferencePitch(500.0)
 
         assertEquals(480.0, viewModel.uiState.value.a4Hz, 0.001)
+        assertEquals(0, reader.subscriptionCount)
     }
 
     private class FakeTunerReader(
-        private val reading: PitchReading?
+        private val values: List<PitchReading?>
     ) : TunerReader {
-        override fun readings(config: TunerConfig): Flow<PitchReading> =
-            if (reading == null) flowOf() else flowOf(reading)
+        var subscriptionCount = 0
+
+        override fun readings(
+            configProvider: () -> TunerConfig
+        ): Flow<PitchReading?> {
+            subscriptionCount++
+            return flowOf(*values.toTypedArray())
+        }
     }
 }
