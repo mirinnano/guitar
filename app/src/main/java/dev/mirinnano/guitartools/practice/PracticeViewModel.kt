@@ -239,6 +239,71 @@ class PracticeViewModel(
         }
     }
 
+    fun syncToPlaybackPosition(
+        positionMs: Long
+    ) {
+        _uiState.update { state ->
+            if (
+                state.progression.isEmpty() ||
+                positionMs < 0L
+            ) {
+                return@update state
+            }
+
+            val totalBeats =
+                state.progression.sumOf {
+                    it.beats
+                }
+
+            if (totalBeats <= 0) {
+                return@update state
+            }
+
+            val absoluteBeat =
+                (
+                    positionMs.toDouble() *
+                        state.bpm /
+                        60_000.0
+                    ).toInt()
+                    .coerceAtLeast(0)
+                    .coerceAtMost(
+                        totalBeats - 1
+                    )
+
+            var remaining =
+                absoluteBeat
+            var targetIndex = 0
+            var beatInStep = 0
+
+            state.progression
+                .forEachIndexed {
+                        index,
+                        step ->
+
+                    if (
+                        remaining <
+                        step.beats
+                    ) {
+                        targetIndex =
+                            index
+                        beatInStep =
+                            remaining
+                        return@forEachIndexed
+                    }
+
+                    remaining -=
+                        step.beats
+                }
+
+            state.copy(
+                currentStepIndex =
+                    targetIndex,
+                beatInStep =
+                    beatInStep
+            )
+        }
+    }
+
     fun togglePlayback() {
         if (_uiState.value.isPlaying) {
             stop()
