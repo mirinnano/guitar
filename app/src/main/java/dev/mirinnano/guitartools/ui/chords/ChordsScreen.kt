@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.mirinnano.guitartools.music.CommonChords
+import dev.mirinnano.guitartools.ui.components.ChordDiagram
 
 @Composable
 fun ChordsScreen(modifier: Modifier = Modifier) {
@@ -56,7 +58,7 @@ fun ChordsScreen(modifier: Modifier = Modifier) {
         )
 
         LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
                 items = chords,
@@ -69,24 +71,40 @@ fun ChordsScreen(modifier: Modifier = Modifier) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
-                        Text(
-                            text = chord.name,
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.weight(1f)
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = chord.name,
+                                style = MaterialTheme.typography.headlineMedium
+                            )
 
-                        Text(
-                            text = chord.frets.joinToString("  ") { fret ->
-                                when {
-                                    fret < 0 -> "×"
-                                    fret == 0 -> "○"
-                                    else -> fret.toString()
-                                }
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            Text(
+                                text = chord.frets.joinToString("  ") { fret ->
+                                    when {
+                                        fret < 0 -> "×"
+                                        fret == 0 -> "0"
+                                        else -> fret.toString()
+                                    }
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Text(
+                                text = "Finger numbers are shown below the diagram.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        ChordDiagram(
+                            shape = chord,
+                            modifier = Modifier.width(156.dp)
                         )
                     }
                 }
