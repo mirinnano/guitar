@@ -436,7 +436,10 @@ private fun PracticeTransport(
                 Text(
                     text =
                         state.bpm.toString() +
-                            " BPM",
+                            " BPM · " +
+                            state.beatsPerBar +
+                            "/" +
+                            state.beatUnit,
                     style =
                         MaterialTheme.typography
                             .titleMedium,
