@@ -3,13 +3,14 @@ package dev.mirinnano.guitartools.ui.metronome
 import androidx.lifecycle.ViewModel
 import dev.mirinnano.guitartools.audio.MetronomeConfig
 import dev.mirinnano.guitartools.audio.MetronomeEngine
+import dev.mirinnano.guitartools.audio.MetronomePlayer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 class MetronomeViewModel(
-    private val engine: MetronomeEngine = MetronomeEngine()
+    private val player: MetronomePlayer = MetronomeEngine()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MetronomeUiState())
@@ -32,18 +33,13 @@ class MetronomeViewModel(
     }
 
     fun togglePlayback() {
-        if (_uiState.value.isPlaying) {
-            stop()
-        } else {
-            start()
-        }
+        if (_uiState.value.isPlaying) stop() else start()
     }
 
     fun start() {
         if (_uiState.value.isPlaying) return
 
-        _uiState.update { it.copy(isPlaying = true) }
-        engine.startWithConfig {
+        player.start {
             val state = _uiState.value
             MetronomeConfig(
                 bpm = state.bpm,
@@ -51,14 +47,16 @@ class MetronomeViewModel(
                 accentFirstBeat = state.accentFirstBeat
             )
         }
+
+        _uiState.update { it.copy(isPlaying = true) }
     }
 
     fun stop() {
-        engine.stop()
+        player.stop()
         _uiState.update { it.copy(isPlaying = false) }
     }
 
     override fun onCleared() {
-        engine.stop()
+        player.stop()
     }
 }
