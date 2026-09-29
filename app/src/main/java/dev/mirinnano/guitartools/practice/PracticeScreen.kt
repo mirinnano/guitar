@@ -159,24 +159,35 @@ fun PracticeScreen(
                 if (state.isPlaying) {
                     viewModel.togglePlayback(
                         syncToBackingTrack =
-                            playbackState.hasMedia
+                            playbackState.hasMedia &&
+                                state.syncBackingTrack
                     )
-                    if (playbackState.isPlaying) {
+                    if (
+                        playbackState.isPlaying &&
+                        state.syncBackingTrack
+                    ) {
                         playbackViewModel.pause()
                     }
                 } else {
                     viewModel.togglePlayback(
                         syncToBackingTrack =
-                            playbackState.hasMedia
+                            playbackState.hasMedia &&
+                                state.syncBackingTrack
                     )
-                    if (playbackState.hasMedia) {
+                    if (
+                        playbackState.hasMedia &&
+                        state.syncBackingTrack
+                    ) {
                         playbackViewModel.play()
                     }
                 }
             },
             onRestart = {
                 viewModel.restart()
-                if (playbackState.hasMedia) {
+                if (
+                    playbackState.hasMedia &&
+                    state.syncBackingTrack
+                ) {
                     playbackViewModel.seekToStart()
                 }
             },
