@@ -1,5 +1,10 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+val getSongBpmApiKey = System.getenv("GETSONGBPM_API_KEY")
+    .orEmpty()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
 val releaseTag = (
     System.getenv("RELEASE_VERSION")
         ?: System.getenv("GITHUB_REF_NAME")
@@ -46,6 +51,7 @@ android {
         targetSdk = 36
         versionCode = releaseVersionCode
         versionName = releaseVersionName
+        buildConfigField("String", "GETSONGBPM_API_KEY", "\"$getSongBpmApiKey\"")
     }
 
     if (hasReleaseSigning) {
@@ -70,6 +76,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {
