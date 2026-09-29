@@ -27,7 +27,8 @@ private const val DISPLAYED_FRET_COUNT = 5
 @Composable
 fun ChordDiagram(
     shape: ChordShape,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
 ) {
     val lineColor = MaterialTheme.colorScheme.onSurface
     val markerColor = MaterialTheme.colorScheme.primary
@@ -36,19 +37,28 @@ fun ChordDiagram(
         shape.name
     )
 
+    val diagramHeight = if (compact) 112.dp else 164.dp
+    val markerRadius = if (compact) 5.dp else 7.dp
+    val barreWidth = if (compact) 11.dp else 15.dp
+
     Column(
         modifier = modifier.semantics {
             contentDescription = description
         },
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(
+            if (compact) 2.dp else 4.dp
+        )
     ) {
-        OpenAndMutedStrings(shape)
+        OpenAndMutedStrings(
+            shape = shape,
+            compact = compact
+        )
 
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(164.dp)
+                .height(diagramHeight)
         ) {
             val horizontalInset = 8.dp.toPx()
             val verticalInset = 4.dp.toPx()
@@ -58,21 +68,36 @@ fun ChordDiagram(
             val top = verticalInset
             val bottom = size.height - verticalInset
 
-            val stringSpacing = (right - left) / (STRING_COUNT - 1)
-            val fretSpacing = (bottom - top) / DISPLAYED_FRET_COUNT
+            val stringSpacing =
+                (right - left) / (STRING_COUNT - 1)
+            val fretSpacing =
+                (bottom - top) / DISPLAYED_FRET_COUNT
 
-            fun xForStringNumber(stringNumber: Int): Float {
-                val stringIndex = STRING_COUNT - stringNumber
-                return left + stringIndex * stringSpacing
+            fun xForStringNumber(
+                stringNumber: Int
+            ): Float {
+                val stringIndex =
+                    STRING_COUNT - stringNumber
+
+                return left +
+                    stringIndex * stringSpacing
             }
 
-            fun yForFret(absoluteFret: Int): Float {
-                val relativeFret = absoluteFret - shape.baseFret + 1
-                return top + (relativeFret - 0.5f) * fretSpacing
+            fun yForFret(
+                absoluteFret: Int
+            ): Float {
+                val relativeFret =
+                    absoluteFret - shape.baseFret + 1
+
+                return top +
+                    (relativeFret - 0.5f) *
+                    fretSpacing
             }
 
             repeat(STRING_COUNT) { stringIndex ->
-                val x = left + stringIndex * stringSpacing
+                val x =
+                    left + stringIndex * stringSpacing
+
                 drawLine(
                     color = lineColor,
                     start = Offset(x, top),
@@ -82,8 +107,13 @@ fun ChordDiagram(
                 )
             }
 
-            for (fretLine in 0..DISPLAYED_FRET_COUNT) {
-                val y = top + fretLine * fretSpacing
+            for (
+                fretLine in
+                0..DISPLAYED_FRET_COUNT
+            ) {
+                val y =
+                    top + fretLine * fretSpacing
+
                 drawLine(
                     color = lineColor,
                     start = Offset(left, y),
@@ -101,44 +131,72 @@ fun ChordDiagram(
             }
 
             shape.barres.forEach { barre ->
-                val relativeFret = barre.fret - shape.baseFret + 1
-                if (relativeFret !in 1..DISPLAYED_FRET_COUNT) {
+                val relativeFret =
+                    barre.fret -
+                        shape.baseFret +
+                        1
+
+                if (
+                    relativeFret !in
+                    1..DISPLAYED_FRET_COUNT
+                ) {
                     return@forEach
                 }
 
                 drawLine(
                     color = markerColor,
                     start = Offset(
-                        xForStringNumber(barre.fromString),
+                        xForStringNumber(
+                            barre.fromString
+                        ),
                         yForFret(barre.fret)
                     ),
                     end = Offset(
-                        xForStringNumber(barre.toString),
+                        xForStringNumber(
+                            barre.toString
+                        ),
                         yForFret(barre.fret)
                     ),
-                    strokeWidth = 15.dp.toPx(),
+                    strokeWidth =
+                        barreWidth.toPx(),
                     cap = StrokeCap.Round
                 )
             }
 
-            shape.frets.forEachIndexed { stringIndex, absoluteFret ->
-                if (absoluteFret <= 0) return@forEachIndexed
+            shape.frets.forEachIndexed {
+                    stringIndex,
+                    absoluteFret ->
 
-                val relativeFret =
-                    absoluteFret - shape.baseFret + 1
-
-                if (relativeFret !in 1..DISPLAYED_FRET_COUNT) {
+                if (absoluteFret <= 0) {
                     return@forEachIndexed
                 }
 
-                val stringNumber = STRING_COUNT - stringIndex
+                val relativeFret =
+                    absoluteFret -
+                        shape.baseFret +
+                        1
+
+                if (
+                    relativeFret !in
+                    1..DISPLAYED_FRET_COUNT
+                ) {
+                    return@forEachIndexed
+                }
+
+                val stringNumber =
+                    STRING_COUNT - stringIndex
 
                 drawCircle(
                     color = markerColor,
-                    radius = 7.dp.toPx(),
+                    radius =
+                        markerRadius.toPx(),
                     center = Offset(
-                        xForStringNumber(stringNumber),
-                        yForFret(absoluteFret)
+                        xForStringNumber(
+                            stringNumber
+                        ),
+                        yForFret(
+                            absoluteFret
+                        )
                     )
                 )
             }
@@ -150,30 +208,46 @@ fun ChordDiagram(
                     R.string.fret_number,
                     shape.baseFret
                 ),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                style = if (compact) {
+                    MaterialTheme.typography.labelSmall
+                } else {
+                    MaterialTheme.typography.labelMedium
+                },
+                color =
+                    MaterialTheme.colorScheme
+                        .onSurfaceVariant
             )
         }
 
         Text(
-            text = shape.fingers.joinToString("  ") { finger ->
+            text = shape.fingers.joinToString(
+                "  "
+            ) { finger ->
                 finger?.toString() ?: "–"
             },
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            style = if (compact) {
+                MaterialTheme.typography.labelSmall
+            } else {
+                MaterialTheme.typography.labelMedium
+            },
+            color =
+                MaterialTheme.colorScheme
+                    .onSurfaceVariant
         )
     }
 }
 
 @Composable
 private fun OpenAndMutedStrings(
-    shape: ChordShape
+    shape: ChordShape,
+    compact: Boolean
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement =
+            Arrangement.SpaceBetween
     ) {
         shape.frets.forEach { fret ->
             Text(
@@ -182,7 +256,11 @@ private fun OpenAndMutedStrings(
                     fret == 0 -> "○"
                     else -> " "
                 },
-                style = MaterialTheme.typography.labelLarge
+                style = if (compact) {
+                    MaterialTheme.typography.labelMedium
+                } else {
+                    MaterialTheme.typography.labelLarge
+                }
             )
         }
     }
