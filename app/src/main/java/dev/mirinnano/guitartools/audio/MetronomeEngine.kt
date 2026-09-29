@@ -20,24 +20,16 @@ data class MetronomeConfig(
 
 class MetronomeEngine(
     private val sampleRate: Int = 48_000
-) {
+) : MetronomePlayer {
     @Volatile
     private var running = false
 
     private var worker: Thread? = null
 
-    fun isRunning(): Boolean = running
+    override val isRunning: Boolean
+        get() = running
 
-    /**
-     * Compatibility entry point used by the current UI.
-     */
-    fun start(bpmProvider: () -> Int) {
-        startWithConfig {
-            MetronomeConfig(bpm = bpmProvider().coerceIn(30, 300))
-        }
-    }
-
-    fun startWithConfig(configProvider: () -> MetronomeConfig) {
+    override fun start(configProvider: () -> MetronomeConfig) {
         if (running) return
         running = true
 
@@ -47,6 +39,7 @@ class MetronomeEngine(
                 AudioFormat.CHANNEL_OUT_MONO,
                 AudioFormat.ENCODING_PCM_16BIT
             )
+            check(minBufferBytes > 0) { "AudioTrack configuration is unsupported" }
 
             val track = AudioTrack.Builder()
                 .setAudioAttributes(
@@ -67,6 +60,10 @@ class MetronomeEngine(
                 .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                 .build()
 
+            check(track.state == AudioTrack.STATE_INITIALIZED) {
+                "Failed to initialize AudioTrack"
+            }
+
             var beatInBar = 0
             track.play()
 
@@ -82,17 +79,27 @@ class MetronomeEngine(
                         amplitude = if (accented) 15_000 else 11_000
                     )
 
-                    track.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
+                    val written = track.write(
+                        pcm,
+                        0,
+                        pcm.size,
+                        AudioTrack.WRITE_BLOCKING
+                    )
+                    check(written >= 0) { "AudioTrack write failed: $written" }
+
                     beatInBar = (beatInBar + 1) % config.beatsPerBar
                 }
             } finally {
+                runCatching { track.pause() }
+                runCatching { track.flush() }
                 runCatching { track.stop() }
                 track.release()
+                running = false
             }
         }
     }
 
-    fun stop() {
+    override fun stop() {
         running = false
         worker?.join(300)
         worker = null
