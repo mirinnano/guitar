@@ -24,6 +24,14 @@ class TuningTest {
     }
 
     @Test
+    fun ebStandardUsesFlatNoteSpelling() {
+        assertEquals(
+            "Eb",
+            Note.D_SHARP.displayName(Tuning.EbStandard.accidentalPreference)
+        )
+    }
+
+    @Test
     fun presetsHaveUniqueIds() {
         assertEquals(
             Tuning.Presets.size,
