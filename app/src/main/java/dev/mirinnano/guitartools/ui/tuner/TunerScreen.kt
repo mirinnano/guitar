@@ -4,15 +4,19 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.mirinnano.guitartools.music.Tuning
 import java.util.Locale
 import kotlin.math.abs
 
@@ -112,8 +117,17 @@ fun TunerScreen(
         }
 
         val reading = state.reading
-        val cents = reading?.cents ?: 0.0
-        val normalized = ((cents.coerceIn(-50.0, 50.0) + 50.0) / 100.0).toFloat()
+        val chromaticCents = reading?.cents ?: 0.0
+        val target = reading?.let {
+            state.selectedTuning.closestString(
+                frequencyHz = it.frequencyHz,
+                a4Hz = state.a4Hz
+            )
+        }
+        val targetCents = target?.centsFromTarget ?: 0.0
+        val normalized = (
+            (targetCents.coerceIn(-50.0, 50.0) + 50.0) / 100.0
+        ).toFloat()
 
         Card(
             modifier = Modifier.fillMaxWidth()
@@ -140,9 +154,17 @@ fun TunerScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                target?.let { targetValue ->
+                    Text(
+                        text = "String " + targetValue.string.stringNumber +
+                            " · target " + targetValue.string.label,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
                 Text(
-                    text = reading?.let { readingValue ->
-                        val rounded = readingValue.cents.toInt()
+                    text = target?.let { targetValue ->
+                        val rounded = targetValue.centsFromTarget.toInt()
                         if (rounded > 0) "+$rounded cents" else "$rounded cents"
                     } ?: "Listening…",
                     style = MaterialTheme.typography.bodyLarge
@@ -155,13 +177,60 @@ fun TunerScreen(
                         .padding(top = 8.dp)
                 )
 
-                if (reading != null && abs(cents) <= 5.0) {
+                if (target != null && abs(targetCents) <= 5.0) {
                     Text(
                         text = "In tune",
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
+
+                if (reading != null) {
+                    Text(
+                        text = "Chromatic offset: " +
+                            (if (chromaticCents > 0) "+" else "") +
+                            chromaticCents.toInt() + " cents",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Tuning",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Tuning.Presets.forEach { tuning ->
+                        FilterChip(
+                            selected = state.selectedTuning.id == tuning.id,
+                            onClick = { viewModel.setTuning(tuning) },
+                            label = { Text(tuning.name) }
+                        )
+                    }
+                }
+
+                Text(
+                    text = state.selectedTuning.strings
+                        .sortedByDescending { it.stringNumber }
+                        .joinToString("  ") { it.label },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
