@@ -144,6 +144,14 @@ class PlaybackViewModel(
         }
     }
 
+    fun play() {
+        controller?.play()
+    }
+
+    fun pause() {
+        controller?.pause()
+    }
+
     fun togglePlayback() {
         val player =
             controller ?: return
@@ -153,6 +161,19 @@ class PlaybackViewModel(
         } else {
             player.play()
         }
+    }
+
+    fun seekTo(
+        positionMs: Long
+    ) {
+        controller?.seekTo(
+            positionMs.coerceAtLeast(0L)
+        )
+        refreshPosition()
+    }
+
+    fun seekToStart() {
+        seekTo(0L)
     }
 
     fun stop() {
@@ -172,7 +193,6 @@ class PlaybackViewModel(
         controller?.apply {
             setMediaItem(item)
             prepare()
-            play()
         }
 
         _uiState.update {
