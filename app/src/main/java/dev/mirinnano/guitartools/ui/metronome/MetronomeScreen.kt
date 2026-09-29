@@ -39,20 +39,6 @@ fun MetronomeScreen(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        FilledTonalButton(
-            onClick = viewModel::tapTempo,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.TouchApp,
-                contentDescription = null
-            )
-            Text(
-                text = "Tap tempo",
-                modifier = Modifier.padding(start = 8.dp)
-            )
-        }
-
         Card(
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -93,6 +79,20 @@ fun MetronomeScreen(
                     Text(if (delta > 0) "+$delta" else "$delta")
                 }
             }
+        }
+
+        FilledTonalButton(
+            onClick = viewModel::tapTempo,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.TouchApp,
+                contentDescription = null
+            )
+            Text(
+                text = "Tap tempo",
+                modifier = Modifier.padding(start = 8.dp)
+            )
         }
 
         Card(
