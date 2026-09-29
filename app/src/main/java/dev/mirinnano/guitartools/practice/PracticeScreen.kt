@@ -121,9 +121,16 @@ fun PracticeScreen(
 
     LaunchedEffect(
         playbackState.positionMs,
-        playbackState.hasMedia
+        playbackState.hasMedia,
+        state.syncBackingTrack,
+        state.syncOffsetMs,
+        state.bpm,
+        state.progression
     ) {
-        if (playbackState.hasMedia) {
+        if (
+            playbackState.hasMedia &&
+            state.syncBackingTrack
+        ) {
             viewModel.syncToPlaybackPosition(
                 playbackState.positionMs
             )
