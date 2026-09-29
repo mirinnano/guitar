@@ -5,6 +5,7 @@ import dev.mirinnano.guitartools.audio.TunerConfig
 import dev.mirinnano.guitartools.audio.TunerReader
 import dev.mirinnano.guitartools.music.Note
 import dev.mirinnano.guitartools.music.PitchReading
+import dev.mirinnano.guitartools.music.Tuning
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -50,6 +51,17 @@ class TunerViewModelTest {
         viewModel.start()
 
         assertNull(viewModel.uiState.value.reading)
+    }
+
+    @Test
+    fun tuningPresetCanBeSelectedWithoutRestartingReader() {
+        val reader = FakeTunerReader(emptyList())
+        val viewModel = TunerViewModel(reader)
+
+        viewModel.setTuning(Tuning.DropD)
+
+        assertEquals(Tuning.DropD, viewModel.uiState.value.selectedTuning)
+        assertEquals(0, reader.subscriptionCount)
     }
 
     @Test
