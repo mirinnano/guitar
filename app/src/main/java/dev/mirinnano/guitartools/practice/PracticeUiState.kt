@@ -14,6 +14,7 @@ data class PracticeUiState(
         ),
     val bpm: Int = 80,
     val beatsPerBar: Int = 4,
+    val beatUnit: Int = 4,
     val currentStepIndex: Int = 0,
     val beatInStep: Int = 0,
     val isPlaying: Boolean = false,
