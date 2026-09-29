@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilledTonalButton
@@ -38,6 +39,20 @@ fun MetronomeScreen(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        FilledTonalButton(
+            onClick = viewModel::tapTempo,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.TouchApp,
+                contentDescription = null
+            )
+            Text(
+                text = "Tap tempo",
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
+
         Card(
             modifier = Modifier.fillMaxWidth()
         ) {
