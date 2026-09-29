@@ -1,5 +1,9 @@
 package dev.mirinnano.guitartools.ui.metronome
 
+import android.content.Context
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,6 +35,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -68,6 +73,10 @@ fun MetronomeScreen(
     val state by
         viewModel.uiState.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+    val bluetoothAudioConnected =
+        isBluetoothAudioConnected(context)
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -84,6 +93,29 @@ fun MetronomeScreen(
         TempoCard(
             state = state
         )
+
+        if (bluetoothAudioConnected) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor =
+                        MaterialTheme.colorScheme
+                            .tertiaryContainer
+                )
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.bluetooth_latency_warning
+                    ),
+                    modifier = Modifier.padding(14.dp),
+                    style =
+                        MaterialTheme.typography.bodySmall,
+                    color =
+                        MaterialTheme.colorScheme
+                            .onTertiaryContainer
+                )
+            }
+        }
 
         BeatIndicator(
             state = state
@@ -685,4 +717,38 @@ private fun PlaybackError(
             }
         }
     }
+}
+
+
+private fun isBluetoothAudioConnected(
+    context: Context
+): Boolean {
+    val audioManager =
+        context.getSystemService(
+            Context.AUDIO_SERVICE
+        ) as AudioManager
+
+    return audioManager
+        .getDevices(
+            AudioManager.GET_DEVICES_OUTPUTS
+        )
+        .any { device ->
+            when (device.type) {
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> true
+
+                else -> {
+                    if (
+                        Build.VERSION.SDK_INT >= 31
+                    ) {
+                        device.type ==
+                            AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                            device.type ==
+                            AudioDeviceInfo.TYPE_BLE_SPEAKER
+                    } else {
+                        false
+                    }
+                }
+            }
+        }
 }
