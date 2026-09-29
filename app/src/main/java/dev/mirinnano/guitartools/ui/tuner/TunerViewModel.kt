@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dev.mirinnano.guitartools.audio.MicrophonePcmSource
 import dev.mirinnano.guitartools.audio.TunerConfig
 import dev.mirinnano.guitartools.audio.TunerEngine
+import dev.mirinnano.guitartools.audio.TunerReader
 import dev.mirinnano.guitartools.audio.YinPitchDetector
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +16,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class TunerViewModel(
-    private val engine: TunerEngine = TunerEngine(
+    private val reader: TunerReader = TunerEngine(
         source = MicrophonePcmSource(),
         pitchDetector = YinPitchDetector()
     )
@@ -31,8 +32,7 @@ class TunerViewModel(
         _uiState.update { it.copy(a4Hz = clamped) }
 
         if (_uiState.value.isListening) {
-            stop()
-            start()
+            restart()
         }
     }
 
@@ -49,7 +49,7 @@ class TunerViewModel(
         }
 
         listeningJob = viewModelScope.launch {
-            engine.readings(config)
+            reader.readings(config)
                 .catch { error ->
                     _uiState.update {
                         it.copy(
@@ -83,6 +83,11 @@ class TunerViewModel(
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    private fun restart() {
+        stop()
+        start()
     }
 
     override fun onCleared() {
