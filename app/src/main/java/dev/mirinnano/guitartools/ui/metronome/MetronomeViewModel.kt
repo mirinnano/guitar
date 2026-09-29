@@ -1,0 +1,77 @@
+package dev.mirinnano.guitartools.ui.metronome
+
+import androidx.lifecycle.ViewModel
+import dev.mirinnano.guitartools.audio.MetronomeConfig
+import dev.mirinnano.guitartools.audio.MetronomeEngine
+import dev.mirinnano.guitartools.audio.MetronomePlayer
+import dev.mirinnano.guitartools.audio.TapTempoCalculator
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+
+class MetronomeViewModel(
+    private val player: MetronomePlayer = MetronomeEngine(),
+    private val tapTempoCalculator: TapTempoCalculator = TapTempoCalculator(),
+    private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000L }
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(MetronomeUiState())
+    val uiState: StateFlow<MetronomeUiState> = _uiState.asStateFlow()
+
+    fun setBpm(value: Int) {
+        tapTempoCalculator.reset()
+        updateBpm(value)
+    }
+
+    fun changeBpm(delta: Int) {
+        tapTempoCalculator.reset()
+        updateBpm(_uiState.value.bpm + delta)
+    }
+
+    fun tapTempo() {
+        tapTempoCalculator.tap(nowMillis())?.let(::updateBpm)
+    }
+
+    fun setBeatsPerBar(value: Int) {
+        _uiState.update { it.copy(beatsPerBar = value.coerceIn(1, 12)) }
+    }
+
+    fun setAccentFirstBeat(enabled: Boolean) {
+        _uiState.update { it.copy(accentFirstBeat = enabled) }
+    }
+
+    fun togglePlayback() {
+        if (_uiState.value.isPlaying) stop() else start()
+    }
+
+    fun start() {
+        if (_uiState.value.isPlaying) return
+
+        player.start {
+            val state = _uiState.value
+            MetronomeConfig(
+                bpm = state.bpm,
+                beatsPerBar = state.beatsPerBar,
+                accentFirstBeat = state.accentFirstBeat
+            )
+        }
+
+        _uiState.update { it.copy(isPlaying = true) }
+    }
+
+    fun stop() {
+        player.stop()
+        _uiState.update { it.copy(isPlaying = false) }
+    }
+
+    private fun updateBpm(value: Int) {
+        _uiState.update {
+            it.copy(bpm = value.coerceIn(30, 300))
+        }
+    }
+
+    override fun onCleared() {
+        player.stop()
+    }
+}
