@@ -18,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.mirinnano.guitartools.music.Fretboard
@@ -46,7 +48,11 @@ fun FretboardDiagram(
     val boardHeight = rowHeight * totalRows
 
     Box(
-        modifier = modifier.horizontalScroll(scrollState)
+        modifier = modifier
+            .semantics {
+                contentDescription = "Guitar fretboard, " + tuning.name + " tuning"
+            }
+            .horizontalScroll(scrollState)
     ) {
         Box(
             modifier = Modifier
