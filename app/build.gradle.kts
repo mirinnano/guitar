@@ -1,7 +1,11 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-val releaseTag = System.getenv("GITHUB_REF_NAME")
-    ?.takeIf { it.matches(Regex("""^v\d+\.\d+\.\d+$""")) }
+val releaseTag = (
+    System.getenv("RELEASE_VERSION")
+        ?: System.getenv("GITHUB_REF_NAME")
+    )?.takeIf {
+        it.matches(Regex("""^v\d+\.\d+\.\d+$"""))
+    }
 
 val releaseVersionName = releaseTag?.removePrefix("v") ?: "0.1.0"
 val releaseVersionParts = releaseVersionName
