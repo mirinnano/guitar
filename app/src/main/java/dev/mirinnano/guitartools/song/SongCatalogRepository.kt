@@ -28,7 +28,7 @@ class GetSongBpmProvider(
 
             val lookup =
                 URLEncoder.encode(
-                    "song:$query",
+                    query,
                     StandardCharsets.UTF_8
                 )
 
@@ -40,7 +40,7 @@ class GetSongBpmProvider(
 
             val url =
                 URI(
-                    "https://api.getsong.co/search/?api_key=$key&type=both&lookup=$lookup&limit=20"
+                    "https://api.getsong.co/search/?api_key=$key&type=song&lookup=$lookup&limit=20"
                 ).toURL()
 
             val connection =
@@ -94,13 +94,23 @@ class GetSongBpmProvider(
                     array.optJSONObject(index)
                         ?: continue
 
-                val artistObject =
-                    item.optJSONObject("artist")
+                val artistValue =
+                    item.opt("artist")
 
                 val artistName =
-                    artistObject
-                        ?.optString("name")
-                        .orEmpty()
+                    when (artistValue) {
+                        is JSONObject ->
+                            artistValue
+                                .optString("name")
+
+                        is JSONArray ->
+                            artistValue
+                                .optJSONObject(0)
+                                ?.optString("name")
+                                .orEmpty()
+
+                        else -> ""
+                    }
 
                 val sourceUrl =
                     item.optString("uri")
