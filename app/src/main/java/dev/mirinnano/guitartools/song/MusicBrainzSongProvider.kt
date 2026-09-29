@@ -19,7 +19,7 @@ class MusicBrainzSongProvider : SongSearchProvider {
             }
 
             val encoded = URLEncoder.encode(
-                "recording:\"$query\"",
+                query,
                 StandardCharsets.UTF_8
             )
 
