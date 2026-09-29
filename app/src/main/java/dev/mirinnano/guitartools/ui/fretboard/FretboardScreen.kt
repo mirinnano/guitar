@@ -5,20 +5,28 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import dev.mirinnano.guitartools.music.Fretboard
+import dev.mirinnano.guitartools.music.Note
 import dev.mirinnano.guitartools.music.Tuning
+import dev.mirinnano.guitartools.ui.components.FretboardDiagram
 
 @Composable
 fun FretboardScreen(modifier: Modifier = Modifier) {
     val tuning = Tuning.Standard
+    var highlightedNote by remember { mutableStateOf<Note?>(null) }
 
     Column(
         modifier = modifier
@@ -32,45 +40,45 @@ fun FretboardScreen(modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        Card {
-            Column(
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Text("String", modifier = Modifier.padding(end = 8.dp))
-                    (0..12).forEach { fret ->
-                        Text(
-                            text = fret.toString(),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+        Text(
+            text = "Highlight note",
+            style = MaterialTheme.typography.labelLarge
+        )
 
-                tuning.strings.reversed().forEach { string ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        Text(
-                            text = string.label,
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = highlightedNote == null,
+                onClick = { highlightedNote = null },
+                label = { Text("All") }
+            )
 
-                        (0..12).forEach { fretNumber ->
-                            val position = Fretboard.position(string, fretNumber)
-                            Text(
-                                text = position.note.displayName,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-                }
+            Note.entries.forEach { note ->
+                FilterChip(
+                    selected = highlightedNote == note,
+                    onClick = { highlightedNote = note },
+                    label = { Text(note.displayName) }
+                )
             }
         }
 
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            FretboardDiagram(
+                tuning = tuning,
+                maxFret = 12,
+                highlightedNote = highlightedNote,
+                modifier = Modifier.padding(12.dp)
+            )
+        }
+
         Text(
-            text = "Showing frets 0–12. Standard tuning.",
+            text = "Frets 0–12 · Standard tuning",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
