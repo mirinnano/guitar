@@ -160,7 +160,7 @@ playback/
 - compileSdk 37
 - targetSdk 36
 - minSdk 26
-- Media3 1.9.4
+- Media3 1.11.1
 
 ```text
 :app:testDebugUnitTest
