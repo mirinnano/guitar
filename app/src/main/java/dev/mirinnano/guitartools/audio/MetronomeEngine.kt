@@ -176,10 +176,16 @@ class MetronomeEngine(
         var offset = 0
 
         while (offset < samples.size && shouldContinue()) {
+            val remaining = samples.size - offset
+            val chunkSize = minOf(
+                remaining,
+                WRITE_CHUNK_SAMPLES
+            )
+
             val written = track.write(
                 samples,
                 offset,
-                samples.size - offset,
+                chunkSize,
                 AudioTrack.WRITE_BLOCKING
             )
 
@@ -226,6 +232,7 @@ class MetronomeEngine(
     private companion object {
         const val DEFAULT_SAMPLE_RATE = 48_000
         const val MIN_BUFFER_BYTES = 8_192
+        const val WRITE_CHUNK_SAMPLES = 2_048
         const val STOP_JOIN_TIMEOUT_MS = 1_000L
 
         const val SECONDS_PER_MINUTE = 60.0
