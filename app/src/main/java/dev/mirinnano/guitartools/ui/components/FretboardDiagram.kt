@@ -20,6 +20,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.stringResource
+import dev.mirinnano.guitartools.R
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.mirinnano.guitartools.music.Fretboard
@@ -41,6 +43,10 @@ fun FretboardDiagram(
     val highlightContentColor = MaterialTheme.colorScheme.onPrimaryContainer
     val defaultContentColor = MaterialTheme.colorScheme.onSurface
     val scrollState = rememberScrollState()
+    val description = stringResource(
+        R.string.fretboard_description,
+        tuning.name
+    )
 
     val totalColumns = maxFret + 1
     val totalRows = 7
@@ -50,7 +56,7 @@ fun FretboardDiagram(
     Box(
         modifier = modifier
             .semantics {
-                contentDescription = "Guitar fretboard, " + tuning.name + " tuning"
+                contentDescription = description
             }
             .horizontalScroll(scrollState)
     ) {
