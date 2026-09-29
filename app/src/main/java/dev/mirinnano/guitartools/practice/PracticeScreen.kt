@@ -1,5 +1,8 @@
 package dev.mirinnano.guitartools.practice
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +57,8 @@ import dev.mirinnano.guitartools.music.Chord
 import dev.mirinnano.guitartools.music.ChordQuality
 import dev.mirinnano.guitartools.music.CommonChords
 import dev.mirinnano.guitartools.music.Note
+import dev.mirinnano.guitartools.playback.PlaybackUiState
+import dev.mirinnano.guitartools.playback.PlaybackViewModel
 import dev.mirinnano.guitartools.song.ExternalChordLinks
 import dev.mirinnano.guitartools.song.SongSearchResult
 import dev.mirinnano.guitartools.ui.components.ChordDiagram
@@ -60,10 +66,37 @@ import dev.mirinnano.guitartools.ui.components.ChordDiagram
 @Composable
 fun PracticeScreen(
     modifier: Modifier = Modifier,
-    viewModel: PracticeViewModel = viewModel()
+    viewModel: PracticeViewModel = viewModel(),
+    playbackViewModel: PlaybackViewModel = viewModel()
 ) {
+    val context = LocalContext.current
+
     val state by
         viewModel.uiState.collectAsStateWithLifecycle()
+
+    val playbackState by
+        playbackViewModel.uiState.collectAsStateWithLifecycle()
+
+    val audioPicker =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument()
+        ) { uri ->
+            if (uri != null) {
+                runCatching {
+                    context.contentResolver
+                        .takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                }
+
+                playbackViewModel.playUri(
+                    uri = uri,
+                    title = state.title,
+                    artist = state.artist
+                )
+            }
+        }
 
     val progressionState =
         rememberLazyListState()
@@ -165,6 +198,19 @@ fun PracticeScreen(
         state.selectedSong?.let {
             SelectedSongCard(it)
         }
+
+        AudioPlaybackCard(
+            state = playbackState,
+            onPickAudio = {
+                audioPicker.launch(
+                    arrayOf("audio/*")
+                )
+            },
+            onToggle =
+                playbackViewModel::togglePlayback,
+            onStop =
+                playbackViewModel::stop
+        )
 
         ChordProImportCard(
             text = state.importText,
@@ -886,6 +932,131 @@ private fun ChordProImportCard(
                     stringResource(
                         R.string.import_action
                     )
+                )
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun AudioPlaybackCard(
+    state: PlaybackUiState,
+    onPickAudio: () -> Unit,
+    onToggle: () -> Unit,
+    onStop: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor =
+                MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(
+                    R.string.backing_track
+                ),
+                style =
+                    MaterialTheme.typography.titleMedium
+            )
+
+            Text(
+                text = stringResource(
+                    R.string.backing_track_description
+                ),
+                style =
+                    MaterialTheme.typography.bodySmall,
+                color =
+                    MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (state.title.isNotBlank()) {
+                Text(
+                    text = state.title,
+                    style =
+                        MaterialTheme.typography.titleSmall
+                )
+
+                if (state.artist.isNotBlank()) {
+                    Text(
+                        text = state.artist,
+                        style =
+                            MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            Button(
+                onClick = onPickAudio,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    stringResource(
+                        R.string.choose_audio
+                    )
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement =
+                    Arrangement.spacedBy(8.dp)
+            ) {
+                FilledTonalButton(
+                    onClick = onToggle,
+                    enabled = state.connected,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector =
+                            if (state.isPlaying) {
+                                Icons.Rounded.Pause
+                            } else {
+                                Icons.Rounded.PlayArrow
+                            },
+                        contentDescription = null
+                    )
+
+                    Text(
+                        text =
+                            stringResource(
+                                if (state.isPlaying) {
+                                    R.string.pause
+                                } else {
+                                    R.string.play
+                                }
+                            ),
+                        modifier =
+                            Modifier.padding(start = 6.dp)
+                    )
+                }
+
+                FilledTonalButton(
+                    onClick = onStop,
+                    enabled = state.connected,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        stringResource(
+                            R.string.stop
+                        )
+                    )
+                }
+            }
+
+            state.errorMessage?.let {
+                Text(
+                    text = it,
+                    color =
+                        MaterialTheme.colorScheme.error,
+                    style =
+                        MaterialTheme.typography.bodySmall
                 )
             }
         }
