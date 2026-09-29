@@ -18,6 +18,8 @@ data class PracticeUiState(
     val beatInStep: Int = 0,
     val isPlaying: Boolean = false,
     val autoScroll: Boolean = true,
+    val syncBackingTrack: Boolean = true,
+    val syncOffsetMs: Long = 0L,
     val importText: String = "",
     val searchQuery: String = "",
     val searchResults: List<SongSearchResult> =
