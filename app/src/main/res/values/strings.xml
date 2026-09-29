@@ -76,6 +76,14 @@
 
     <string name="highlight_note">強調する音</string>
     <string name="fretboard_footer">0〜12フレット · Standard tuning</string>
+    <string name="fretboard_footer_24">0〜24フレット · スクロール/ズーム対応</string>
+    <string name="fretboard_mode">表示モード</string>
+    <string name="single_note">単音</string>
+    <string name="scale">スケール</string>
+    <string name="root_note">ルート音</string>
+    <string name="interval_labels">度数で表示</string>
+    <string name="left_handed">左利き表示</string>
+    <string name="zoom">ズーム</string>
 
     <string name="chord_diagram_description">%1$s のコード図</string>
     <string name="fret_number">%1$dフレット</string>
