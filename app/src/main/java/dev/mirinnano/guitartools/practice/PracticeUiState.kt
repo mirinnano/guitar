@@ -26,7 +26,5 @@ data class PracticeUiState(
         emptyList(),
     val isSearching: Boolean = false,
     val searchError: String? = null,
-    val selectedSong: SongSearchResult? = null,
-    val syncToBackingTrack: Boolean = true,
-    val backingTrackOffsetMs: Long = 0L
+    val selectedSong: SongSearchResult? = null
 )
