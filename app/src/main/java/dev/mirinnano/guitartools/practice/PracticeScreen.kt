@@ -1078,6 +1078,92 @@ private fun AudioPlaybackCard(
                 )
             }
 
+            if (
+                state.hasMedia &&
+                state.durationMs != null
+            ) {
+                Text(
+                    text =
+                        formatPlaybackTime(
+                            state.positionMs
+                        ) +
+                            " / " +
+                            formatPlaybackTime(
+                                state.durationMs
+                            ),
+                    style =
+                        MaterialTheme.typography
+                            .labelMedium,
+                    color =
+                        MaterialTheme.colorScheme
+                            .onSurfaceVariant
+                )
+
+                Slider(
+                    value =
+                        state.positionMs
+                            .coerceAtMost(
+                                state.durationMs
+                            )
+                            .toFloat(),
+                    onValueChange = {
+                        onSeek(it.toLong())
+                    },
+                    valueRange =
+                        0f..
+                            state.durationMs
+                                .toFloat()
+                                .coerceAtLeast(1f)
+                )
+            }
+
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth(),
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.sync_backing_track
+                    ),
+                    modifier =
+                        Modifier.weight(1f)
+                )
+                Switch(
+                    checked = syncEnabled,
+                    onCheckedChange =
+                        onSyncEnabled
+                )
+            }
+
+            if (syncEnabled) {
+                Text(
+                    text = stringResource(
+                        R.string.sync_offset_seconds,
+                        syncOffsetMs / 1000f
+                    ),
+                    style =
+                        MaterialTheme.typography
+                            .labelMedium,
+                    color =
+                        MaterialTheme.colorScheme
+                            .onSurfaceVariant
+                )
+
+                Slider(
+                    value =
+                        syncOffsetMs.toFloat(),
+                    onValueChange = {
+                        onSyncOffset(
+                            it.toLong()
+                        )
+                    },
+                    valueRange =
+                        0f..60_000f
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement =
