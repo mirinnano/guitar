@@ -17,31 +17,60 @@ class ChordTest {
     }
 
     @Test
-    fun suspendedAndPowerChordIntervalsAreCorrect() {
+    fun ninthAndSixthIntervalsAreCorrect() {
         assertEquals(
-            listOf(Note.D, Note.E, Note.A),
-            Chord(Note.D, ChordQuality.SUS_2).notes
+            listOf(Note.C, Note.E, Note.G, Note.A),
+            Chord(Note.C, ChordQuality.MAJOR_6).notes
         )
 
         assertEquals(
-            listOf(Note.E, Note.B),
-            Chord(Note.E, ChordQuality.POWER_5).notes
+            listOf(
+                Note.C,
+                Note.E,
+                Note.G,
+                Note.A_SHARP,
+                Note.D
+            ),
+            Chord(Note.C, ChordQuality.DOMINANT_9).notes
         )
     }
 
     @Test
-    fun commonLibraryCoversEverySupportedQuality() {
-        val qualities = CommonChords.all
-            .map { it.chord.quality }
-            .toSet()
+    fun catalogueContainsEveryRootAndQuality() {
+        val expectedCount =
+            Note.entries.size * ChordQuality.entries.size
 
-        ChordQuality.entries.forEach { quality ->
-            assertTrue(quality in qualities)
+        assertEquals(expectedCount, CommonChords.all.size)
+
+        Note.entries.forEach { root ->
+            val shapes = CommonChords.forRoot(root)
+
+            assertEquals(
+                ChordQuality.entries.size,
+                shapes.size
+            )
+
+            assertEquals(
+                ChordQuality.entries.toList(),
+                shapes.map { it.chord.quality }
+            )
         }
     }
 
     @Test
-    fun commonLibraryHasUniqueNames() {
+    fun catalogueIsOrderedChromaticallyFromCToB() {
+        val rootsInOrder = CommonChords.all
+            .map { it.chord.root }
+            .distinct()
+
+        assertEquals(
+            Note.entries.toList(),
+            rootsInOrder
+        )
+    }
+
+    @Test
+    fun catalogueHasUniqueNames() {
         val names = CommonChords.all.map { it.name }
 
         assertEquals(names.size, names.toSet().size)
@@ -56,19 +85,30 @@ class ChordTest {
     }
 
     @Test
-    fun fMajorContainsFullBarre() {
-        val fMajor = CommonChords.all.first {
-            it.name == "F"
-        }
+    fun everyPlayedNoteBelongsToTheChord() {
+        val openStringMidi =
+            listOf(40, 45, 50, 55, 59, 64)
 
-        assertTrue(
-            fMajor.barres.contains(
-                Barre(
-                    fret = 1,
-                    fromString = 6,
-                    toString = 1
-                )
+        CommonChords.all.forEach { shape ->
+            val chordNotes = shape.chord.notes.toSet()
+
+            val playedNotes = shape.frets
+                .zip(openStringMidi)
+                .filter { (fret, _) -> fret >= 0 }
+                .map { (fret, openMidi) ->
+                    Note.fromMidi(openMidi + fret)
+                }
+                .toSet()
+
+            assertTrue(
+                "${shape.name} contains an out-of-chord note: $playedNotes",
+                playedNotes.all { it in chordNotes }
             )
-        )
+
+            assertTrue(
+                "${shape.name} does not include every chord tone",
+                chordNotes.all { it in playedNotes }
+            )
+        }
     }
 }
