@@ -2,6 +2,9 @@ package dev.mirinnano.guitartools.song
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URI
@@ -10,13 +13,30 @@ import java.nio.charset.StandardCharsets
 
 class MusicBrainzSongProvider : SongSearchProvider {
 
+    private val requestMutex = Mutex()
+    private var lastRequestAtMs = 0L
+
     override suspend fun search(
         query: String
-    ): List<SongSearchResult> =
-        withContext(Dispatchers.IO) {
-            if (query.isBlank()) {
-                return@withContext emptyList()
+    ): List<SongSearchResult> {
+        if (query.isBlank()) {
+            return emptyList()
+        }
+
+        return requestMutex.withLock {
+            val now = System.currentTimeMillis()
+            val waitMs =
+                (1_050L - (now - lastRequestAtMs))
+                    .coerceAtLeast(0L)
+
+            if (waitMs > 0L) {
+                delay(waitMs)
             }
+
+            lastRequestAtMs =
+                System.currentTimeMillis()
+
+            withContext(Dispatchers.IO) {
 
             val encoded = URLEncoder.encode(
                 query,
@@ -111,5 +131,7 @@ class MusicBrainzSongProvider : SongSearchProvider {
             } finally {
                 connection.disconnect()
             }
+            }
         }
+    }
 }
