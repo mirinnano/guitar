@@ -12,29 +12,36 @@ import kotlinx.coroutines.flow.update
 
 class MetronomeViewModel(
     private val player: MetronomePlayer = MetronomeEngine(),
-    private val tapTempoCalculator: TapTempoCalculator = TapTempoCalculator(),
+    private val tapTempo: TapTempoCalculator = TapTempoCalculator(),
     private val nowMillis: () -> Long = { System.nanoTime() / 1_000_000L }
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MetronomeUiState())
     val uiState: StateFlow<MetronomeUiState> = _uiState.asStateFlow()
 
-    fun setBpm(value: Int) {
-        tapTempoCalculator.reset()
-        updateBpm(value)
+    fun setBpm(bpm: Int) {
+        tapTempo.reset()
+        updateBpm(bpm)
     }
 
     fun changeBpm(delta: Int) {
-        tapTempoCalculator.reset()
+        tapTempo.reset()
         updateBpm(_uiState.value.bpm + delta)
     }
 
-    fun tapTempo() {
-        tapTempoCalculator.tap(nowMillis())?.let(::updateBpm)
+    fun registerTempoTap() {
+        tapTempo.tap(nowMillis())?.let(::updateBpm)
     }
 
-    fun setBeatsPerBar(value: Int) {
-        _uiState.update { it.copy(beatsPerBar = value.coerceIn(1, 12)) }
+    fun setBeatsPerBar(beats: Int) {
+        _uiState.update {
+            it.copy(
+                beatsPerBar = beats.coerceIn(
+                    MetronomeConfig.MIN_BEATS_PER_BAR,
+                    MetronomeConfig.MAX_BEATS_PER_BAR
+                )
+            )
+        }
     }
 
     fun setAccentFirstBeat(enabled: Boolean) {
@@ -42,32 +49,63 @@ class MetronomeViewModel(
     }
 
     fun togglePlayback() {
-        if (_uiState.value.isPlaying) stop() else start()
+        if (_uiState.value.isPlaying) {
+            stop()
+        } else {
+            start()
+        }
     }
 
-    fun start() {
+    fun dismissPlaybackError() {
+        _uiState.update { it.copy(playbackFailed = false) }
+    }
+
+    private fun start() {
         if (_uiState.value.isPlaying) return
 
-        player.start {
-            val state = _uiState.value
-            MetronomeConfig(
-                bpm = state.bpm,
-                beatsPerBar = state.beatsPerBar,
-                accentFirstBeat = state.accentFirstBeat
+        _uiState.update {
+            it.copy(
+                isPlaying = true,
+                playbackFailed = false
             )
         }
 
-        _uiState.update { it.copy(isPlaying = true) }
+        player.start(
+            configProvider = ::currentConfig,
+            onError = {
+                _uiState.update {
+                    it.copy(
+                        isPlaying = false,
+                        playbackFailed = true
+                    )
+                }
+            }
+        )
     }
 
-    fun stop() {
+    private fun stop() {
         player.stop()
         _uiState.update { it.copy(isPlaying = false) }
     }
 
-    private fun updateBpm(value: Int) {
+    private fun currentConfig(): MetronomeConfig {
+        val state = _uiState.value
+
+        return MetronomeConfig(
+            bpm = state.bpm,
+            beatsPerBar = state.beatsPerBar,
+            accentFirstBeat = state.accentFirstBeat
+        )
+    }
+
+    private fun updateBpm(bpm: Int) {
         _uiState.update {
-            it.copy(bpm = value.coerceIn(30, 300))
+            it.copy(
+                bpm = bpm.coerceIn(
+                    MetronomeConfig.MIN_BPM,
+                    MetronomeConfig.MAX_BPM
+                )
+            )
         }
     }
 
