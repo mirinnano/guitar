@@ -85,6 +85,11 @@
     <string name="import_chordpro">ChordProを読み込む</string>
     <string name="import_chordpro_description">自分で作成した、または利用許諾のあるChordProを貼り付けるとコード進行へ変換します。</string>
     <string name="import_action">コード進行として読み込む</string>
+    <string name="backing_track">バッキング音源</string>
+    <string name="backing_track_description">端末内の音源を選ぶと、通知から操作できるバックグラウンド再生で練習できます。</string>
+    <string name="choose_audio">音源を選ぶ</string>
+    <string name="play">再生</string>
+    <string name="pause">一時停止</string>
 
     <string name="highlight_note">強調する音</string>
     <string name="fretboard_footer">0〜12フレット · Standard tuning</string>
