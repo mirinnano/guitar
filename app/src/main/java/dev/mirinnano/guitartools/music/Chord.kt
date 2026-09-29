@@ -12,9 +12,14 @@ enum class ChordQuality(
     MAJOR("", listOf(0, 4, 7)),
     MINOR("m", listOf(0, 3, 7)),
     POWER_5("5", listOf(0, 7)),
+    MAJOR_6("6", listOf(0, 4, 7, 9)),
+    MINOR_6("m6", listOf(0, 3, 7, 9)),
     DOMINANT_7("7", listOf(0, 4, 7, 10)),
     MAJOR_7("maj7", listOf(0, 4, 7, 11)),
     MINOR_7("m7", listOf(0, 3, 7, 10)),
+    DOMINANT_9("9", listOf(0, 4, 7, 10, 14)),
+    MAJOR_9("maj9", listOf(0, 4, 7, 11, 14)),
+    MINOR_9("m9", listOf(0, 3, 7, 10, 14)),
     SUS_2("sus2", listOf(0, 2, 7)),
     SUS_4("sus4", listOf(0, 5, 7)),
     ADD_9("add9", listOf(0, 4, 7, 14)),
@@ -30,9 +35,11 @@ data class Chord(
         get() = root.displayName + quality.symbol
 
     val notes: List<Note>
-        get() = quality.intervals.map { interval ->
-            Note.fromMidi(root.semitoneFromC + interval)
-        }
+        get() = quality.intervals
+            .map { interval ->
+                Note.fromMidi(root.semitoneFromC + interval)
+            }
+            .distinct()
 }
 
 /**
