@@ -91,6 +91,8 @@
     <string name="choose_audio">音源を選ぶ</string>
     <string name="play">再生</string>
     <string name="pause">一時停止</string>
+    <string name="sync_backing_track">音源位置とコード進行を同期</string>
+    <string name="sync_offset_seconds">前奏オフセット %1$.1f秒</string>
 
     <string name="highlight_note">強調する音</string>
     <string name="fretboard_footer">0〜12フレット · Standard tuning</string>
