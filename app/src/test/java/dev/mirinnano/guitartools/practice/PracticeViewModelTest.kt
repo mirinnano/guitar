@@ -100,6 +100,33 @@ class PracticeViewModelTest {
     }
 
     @Test
+    fun backingTrackPositionSelectsMatchingChord() {
+        val viewModel =
+            PracticeViewModel(
+                metronome =
+                    FakeMetronomePlayer(),
+                songProvider =
+                    FakeSongProvider()
+            )
+
+        viewModel.setBpm(80)
+        viewModel.syncToPlaybackPosition(
+            3_000L
+        )
+
+        assertEquals(
+            1,
+            viewModel.uiState.value
+                .currentStepIndex
+        )
+        assertEquals(
+            0,
+            viewModel.uiState.value
+                .beatInStep
+        )
+    }
+
+    @Test
     fun selectingSongAppliesAvailableBpm() {
         val viewModel =
             PracticeViewModel(
