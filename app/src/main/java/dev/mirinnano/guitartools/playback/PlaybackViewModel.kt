@@ -5,21 +5,29 @@ import android.content.ComponentName
 import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 data class PlaybackUiState(
     val connected: Boolean = false,
     val isPlaying: Boolean = false,
     val title: String = "",
     val artist: String = "",
+    val hasMedia: Boolean = false,
+    val positionMs: Long = 0L,
+    val durationMs: Long? = null,
     val errorMessage: String? = null
 )
 
@@ -55,6 +63,8 @@ class PlaybackViewModel(
     private var pendingItem:
         MediaItem? = null
 
+    private var positionJob: Job? = null
+
     init {
         controllerFuture.addListener(
             {
@@ -69,6 +79,13 @@ class PlaybackViewModel(
                             connected = true,
                             isPlaying =
                                 mediaController.isPlaying,
+                            hasMedia =
+                                mediaController.mediaItemCount > 0,
+                            durationMs =
+                                mediaController.duration
+                                    .takeIf { value ->
+                                        value > 0L
+                                    },
                             errorMessage = null
                         )
                     }
@@ -140,6 +157,13 @@ class PlaybackViewModel(
 
     fun stop() {
         controller?.stop()
+        _uiState.update {
+            it.copy(
+                isPlaying = false,
+                positionMs = 0L
+            )
+        }
+        stopPositionUpdates()
     }
 
     private fun playItem(
@@ -150,6 +174,13 @@ class PlaybackViewModel(
             prepare()
             play()
         }
+
+        _uiState.update {
+            it.copy(
+                hasMedia = true,
+                positionMs = 0L
+            )
+        }
     }
 
     override fun onIsPlayingChanged(
@@ -159,6 +190,13 @@ class PlaybackViewModel(
             it.copy(
                 isPlaying = isPlaying
             )
+        }
+
+        if (isPlaying) {
+            startPositionUpdates()
+        } else {
+            stopPositionUpdates()
+            refreshPosition()
         }
     }
 
@@ -178,7 +216,43 @@ class PlaybackViewModel(
                 artist =
                     metadata?.artist
                         ?.toString()
-                        .orEmpty()
+                        .orEmpty(),
+                hasMedia =
+                    mediaItem != null
+            )
+        }
+    }
+
+    private fun startPositionUpdates() {
+        if (positionJob != null) return
+
+        positionJob =
+            viewModelScope.launch {
+                while (isActive) {
+                    refreshPosition()
+                    delay(200L)
+                }
+            }
+    }
+
+    private fun stopPositionUpdates() {
+        positionJob?.cancel()
+        positionJob = null
+    }
+
+    private fun refreshPosition() {
+        val player = controller ?: return
+
+        _uiState.update {
+            it.copy(
+                positionMs =
+                    player.currentPosition
+                        .coerceAtLeast(0L),
+                durationMs =
+                    player.duration
+                        .takeIf { value ->
+                            value > 0L
+                        }
             )
         }
     }
@@ -197,6 +271,7 @@ class PlaybackViewModel(
     }
 
     override fun onCleared() {
+        stopPositionUpdates()
         controller?.removeListener(this)
         MediaController.releaseFuture(
             controllerFuture
