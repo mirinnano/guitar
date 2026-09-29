@@ -31,6 +31,7 @@
     <string name="goal_bpm">目標BPM</string>
     <string name="step_bpm">増加BPM</string>
     <string name="bars_per_step">増加までの小節数</string>
+    <string name="bluetooth_latency_warning">Bluetooth音声は遅延が発生します。正確なクリック練習では本体スピーカーまたは有線出力を推奨します。</string>
 
     <string name="microphone_access">マイクへのアクセス</string>
     <string name="microphone_access_description">チューナーでギターの音程を検出するためにマイクを使用します。</string>
