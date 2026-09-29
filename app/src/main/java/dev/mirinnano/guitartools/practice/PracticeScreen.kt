@@ -241,6 +241,10 @@ fun PracticeScreen(
 
         AudioPlaybackCard(
             state = playbackState,
+            syncEnabled =
+                state.syncBackingTrack,
+            syncOffsetMs =
+                state.syncOffsetMs,
             onPickAudio = {
                 audioPicker.launch(
                     arrayOf("audio/*")
@@ -251,7 +255,11 @@ fun PracticeScreen(
             onStop =
                 playbackViewModel::stop,
             onSeek =
-                playbackViewModel::seekTo
+                playbackViewModel::seekTo,
+            onSyncEnabled =
+                viewModel::setBackingTrackSync,
+            onSyncOffset =
+                viewModel::setSyncOffsetMs
         )
 
         ChordProImportCard(
@@ -984,10 +992,14 @@ private fun ChordProImportCard(
 @Composable
 private fun AudioPlaybackCard(
     state: PlaybackUiState,
+    syncEnabled: Boolean,
+    syncOffsetMs: Long,
     onPickAudio: () -> Unit,
     onToggle: () -> Unit,
     onStop: () -> Unit,
-    onSeek: (Long) -> Unit
+    onSeek: (Long) -> Unit,
+    onSyncEnabled: (Boolean) -> Unit,
+    onSyncOffset: (Long) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1033,45 +1045,6 @@ private fun AudioPlaybackCard(
                             MaterialTheme.typography.bodySmall
                     )
                 }
-            }
-
-            if (
-                state.hasMedia &&
-                state.durationMs != null
-            ) {
-                Text(
-                    text =
-                        formatPlaybackTime(
-                            state.positionMs
-                        ) +
-                            " / " +
-                            formatPlaybackTime(
-                                state.durationMs
-                            ),
-                    style =
-                        MaterialTheme.typography.bodySmall,
-                    color =
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Slider(
-                    value =
-                        state.positionMs
-                            .coerceIn(
-                                0L,
-                                state.durationMs
-                            )
-                            .toFloat(),
-                    onValueChange = {
-                        onSeek(it.toLong())
-                    },
-                    valueRange =
-                        0f..
-                            state.durationMs
-                                .toFloat(),
-                    enabled =
-                        state.durationMs > 0L
-                )
             }
 
             Button(
