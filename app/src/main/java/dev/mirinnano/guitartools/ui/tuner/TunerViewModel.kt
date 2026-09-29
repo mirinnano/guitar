@@ -28,18 +28,14 @@ class TunerViewModel(
     private var listeningJob: Job? = null
 
     fun setReferencePitch(a4Hz: Double) {
-        val clamped = a4Hz.coerceIn(400.0, 480.0)
-        _uiState.update { it.copy(a4Hz = clamped) }
-
-        if (_uiState.value.isListening) {
-            restart()
+        _uiState.update {
+            it.copy(a4Hz = a4Hz.coerceIn(400.0, 480.0))
         }
     }
 
     fun start() {
         if (listeningJob != null) return
 
-        val config = TunerConfig(a4Hz = _uiState.value.a4Hz)
         _uiState.update {
             it.copy(
                 isListening = true,
@@ -49,11 +45,14 @@ class TunerViewModel(
         }
 
         listeningJob = viewModelScope.launch {
-            reader.readings(config)
+            reader.readings {
+                TunerConfig(a4Hz = _uiState.value.a4Hz)
+            }
                 .catch { error ->
                     _uiState.update {
                         it.copy(
                             isListening = false,
+                            reading = null,
                             errorMessage = error.message ?: "Microphone input failed"
                         )
                     }
@@ -83,11 +82,6 @@ class TunerViewModel(
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
-    }
-
-    private fun restart() {
-        stop()
-        start()
     }
 
     override fun onCleared() {
