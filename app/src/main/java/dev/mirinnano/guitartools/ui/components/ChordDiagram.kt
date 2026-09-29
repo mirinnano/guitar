@@ -14,6 +14,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.mirinnano.guitartools.music.ChordShape
 
@@ -26,7 +28,9 @@ fun ChordDiagram(
     val dotColor = MaterialTheme.colorScheme.primary
 
     Column(
-        modifier = modifier,
+        modifier = modifier.semantics {
+            contentDescription = shape.name + " chord diagram"
+        },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
