@@ -33,6 +33,12 @@ class TunerViewModel(
         }
     }
 
+    fun setTuning(tuning: dev.mirinnano.guitartools.music.Tuning) {
+        _uiState.update {
+            it.copy(selectedTuning = tuning)
+        }
+    }
+
     fun start() {
         if (listeningJob != null) return
 
