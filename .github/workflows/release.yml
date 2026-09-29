@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - "release/v*"
 
 permissions:
   contents: write
@@ -27,13 +29,24 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
-      - name: Validate semantic version tag
+      - name: Resolve release version
         shell: bash
         run: |
-          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Tag must use semantic version format, for example v0.1.0"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            RELEASE_VERSION="${GITHUB_REF_NAME}"
+          elif [[ "${GITHUB_REF_NAME}" =~ ^release/(v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            RELEASE_VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "Release ref must be vX.Y.Z or release/vX.Y.Z"
             exit 1
           fi
+
+          if [[ ! "${RELEASE_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must use semantic version format, for example v0.1.1"
+            exit 1
+          fi
+
+          echo "RELEASE_VERSION=${RELEASE_VERSION}" >> "${GITHUB_ENV}"
 
       - name: Validate signing secrets
         shell: bash
@@ -78,14 +91,15 @@ jobs:
       - name: Prepare release assets
         shell: bash
         run: |
-          APK_NAME="guitar-tools-${GITHUB_REF_NAME}.apk"
+          APK_NAME="guitar-tools-${RELEASE_VERSION}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$APK_NAME"
           sha256sum "$APK_NAME" > "$APK_NAME.sha256"
 
       - name: Upload signed APK artifact
         uses: actions/upload-artifact@v7
         with:
-          path: guitar-tools-${{ github.ref_name }}.apk
+          name: signed-release-apk
+          path: guitar-tools-*.apk
           archive: false
           if-no-files-found: error
           retention-days: 30
@@ -95,10 +109,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            "guitar-tools-${GITHUB_REF_NAME}.apk" \
-            "guitar-tools-${GITHUB_REF_NAME}.apk.sha256" \
+          APK_NAME="guitar-tools-${RELEASE_VERSION}.apk"
+
+          gh release create "${RELEASE_VERSION}" \
+            "$APK_NAME" \
+            "$APK_NAME.sha256" \
             --repo "${GITHUB_REPOSITORY}" \
-            --verify-tag \
+            --target "${GITHUB_SHA}" \
             --generate-notes \
-            --title "Guitar Tools ${GITHUB_REF_NAME}"
+            --title "Guitar Tools ${RELEASE_VERSION}"
