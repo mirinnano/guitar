@@ -1,5 +1,7 @@
 package dev.mirinnano.guitartools.ui.metronome
 
+import dev.mirinnano.guitartools.audio.BeatEvent
+import dev.mirinnano.guitartools.audio.BeatAccent
 import dev.mirinnano.guitartools.audio.MetronomeConfig
 import dev.mirinnano.guitartools.audio.MetronomePlayer
 import org.junit.Assert.assertEquals
@@ -12,7 +14,8 @@ class MetronomeViewModelTest {
     @Test
     fun bpmIsClampedAndPlaybackIsControlled() {
         val player = FakeMetronomePlayer()
-        val viewModel = MetronomeViewModel(player = player)
+        val viewModel =
+            MetronomeViewModel(player = player)
 
         viewModel.setBpm(500)
 
@@ -23,16 +26,22 @@ class MetronomeViewModelTest {
 
         viewModel.togglePlayback()
 
-        assertTrue(viewModel.uiState.value.isPlaying)
+        assertTrue(
+            viewModel.uiState.value.isPlaying
+        )
         assertTrue(player.isRunning)
         assertEquals(
             MetronomeConfig.MAX_BPM,
-            player.configProvider?.invoke()?.bpm
+            player.configProvider
+                ?.invoke()
+                ?.bpm
         )
 
         viewModel.togglePlayback()
 
-        assertFalse(viewModel.uiState.value.isPlaying)
+        assertFalse(
+            viewModel.uiState.value.isPlaying
+        )
         assertFalse(player.isRunning)
     }
 
@@ -48,38 +57,96 @@ class MetronomeViewModelTest {
         now += 500L
         viewModel.registerTempoTap()
 
-        assertEquals(120, viewModel.uiState.value.bpm)
+        assertEquals(
+            120,
+            viewModel.uiState.value.bpm
+        )
+    }
+
+    @Test
+    fun speedTrainerRaisesTempoAfterBars() {
+        val player = FakeMetronomePlayer()
+        val viewModel =
+            MetronomeViewModel(player = player)
+
+        viewModel.setSpeedStartBpm(60)
+        viewModel.setSpeedEndBpm(80)
+        viewModel.setSpeedStepBpm(5)
+        viewModel.setSpeedBarsPerStep(2)
+        viewModel.setSpeedTrainerEnabled(true)
+        viewModel.togglePlayback()
+
+        repeat(2) {
+            player.beat(
+                BeatEvent(
+                    beatInBar = 3,
+                    subdivisionIndex = 0,
+                    isCountIn = false,
+                    accent = BeatAccent.NORMAL
+                )
+            )
+        }
+
+        assertEquals(
+            65,
+            viewModel.uiState.value.bpm
+        )
     }
 
     @Test
     fun playbackFailureIsExposedToUi() {
         val player = FakeMetronomePlayer()
-        val viewModel = MetronomeViewModel(player = player)
+        val viewModel =
+            MetronomeViewModel(player = player)
 
         viewModel.togglePlayback()
-        player.fail(IllegalStateException("test"))
+        player.fail(
+            IllegalStateException("test")
+        )
 
-        assertFalse(viewModel.uiState.value.isPlaying)
-        assertTrue(viewModel.uiState.value.playbackFailed)
+        assertFalse(
+            viewModel.uiState.value.isPlaying
+        )
+        assertTrue(
+            viewModel.uiState.value.playbackFailed
+        )
     }
 
-    private class FakeMetronomePlayer : MetronomePlayer {
+    private class FakeMetronomePlayer :
+        MetronomePlayer {
+
         override var isRunning: Boolean = false
 
-        var configProvider: (() -> MetronomeConfig)? = null
-        private var onError: ((Throwable) -> Unit)? = null
+        var configProvider:
+            (() -> MetronomeConfig)? = null
+
+        private var onBeat:
+            ((BeatEvent) -> Unit)? = null
+
+        private var onError:
+            ((Throwable) -> Unit)? = null
 
         override fun start(
-            configProvider: () -> MetronomeConfig,
-            onError: (Throwable) -> Unit
+            configProvider:
+                () -> MetronomeConfig,
+            onBeat:
+                (BeatEvent) -> Unit,
+            onError:
+                (Throwable) -> Unit
         ) {
-            this.configProvider = configProvider
+            this.configProvider =
+                configProvider
+            this.onBeat = onBeat
             this.onError = onError
             isRunning = true
         }
 
         override fun stop() {
             isRunning = false
+        }
+
+        fun beat(event: BeatEvent) {
+            onBeat?.invoke(event)
         }
 
         fun fail(error: Throwable) {

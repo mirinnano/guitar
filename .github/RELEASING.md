@@ -42,17 +42,22 @@ Create these four secrets:
 | `RELEASE_STORE_PASSWORD` | Keystore password |
 | `RELEASE_KEY_ALIAS` | `guitar-tools` unless you chose another alias |
 | `RELEASE_KEY_PASSWORD` | Key password |
+| `GETSONGBPM_API_KEY` | Optional GetSongBPM API key for BPM/key metadata |
+
+The GetSongBPM secret is optional. Without it, song search falls back to MusicBrainz and the app remains fully buildable.
 
 ## 4. Publish a release
 
-After the release commit is on `main`:
+After the release commit is on `main`, either push a semantic version tag:
 
 ```bash
 git checkout main
 git pull
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
+
+or create/push a `release/vX.Y.Z` branch. Both routes run the same signed release workflow.
 
 The `Release APK` workflow will:
 

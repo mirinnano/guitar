@@ -6,36 +6,9 @@ import android.media.AudioTrack
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 import kotlin.math.PI
+import kotlin.math.floor
 import kotlin.math.sin
 
-data class MetronomeConfig(
-    val bpm: Int = DEFAULT_BPM,
-    val beatsPerBar: Int = DEFAULT_BEATS_PER_BAR,
-    val accentFirstBeat: Boolean = true
-) {
-    init {
-        require(bpm in MIN_BPM..MAX_BPM)
-        require(beatsPerBar in MIN_BEATS_PER_BAR..MAX_BEATS_PER_BAR)
-    }
-
-    companion object {
-        const val MIN_BPM = 30
-        const val MAX_BPM = 300
-        const val DEFAULT_BPM = 120
-
-        const val MIN_BEATS_PER_BAR = 1
-        const val MAX_BEATS_PER_BAR = 12
-        const val DEFAULT_BEATS_PER_BAR = 4
-    }
-}
-
-/**
- * Sample-clock driven metronome.
- *
- * Each beat is rendered as PCM containing a short click followed by silence.
- * Writing the entire beat to AudioTrack keeps timing on the audio clock instead
- * of depending on Thread.sleep()/delay() accuracy.
- */
 class MetronomeEngine(
     private val sampleRate: Int = DEFAULT_SAMPLE_RATE
 ) : MetronomePlayer {
@@ -50,6 +23,7 @@ class MetronomeEngine(
 
     override fun start(
         configProvider: () -> MetronomeConfig,
+        onBeat: (BeatEvent) -> Unit,
         onError: (Throwable) -> Unit
     ) {
         synchronized(lock) {
@@ -65,7 +39,8 @@ class MetronomeEngine(
                 runCatching {
                     playLoop(
                         session = session,
-                        configProvider = configProvider
+                        configProvider = configProvider,
+                        onBeat = onBeat
                     )
                 }.onFailure(onError)
 
@@ -94,33 +69,92 @@ class MetronomeEngine(
 
     private fun playLoop(
         session: PlaybackSession,
-        configProvider: () -> MetronomeConfig
+        configProvider: () -> MetronomeConfig,
+        onBeat: (BeatEvent) -> Unit
     ) {
         val track = createAudioTrack()
+        val initial = configProvider()
+
+        var beatInBar = 0
+        var subdivisionIndex = 0
+        var remainingCountInPulses =
+            initial.countInBars *
+                initial.beatsPerBar *
+                initial.subdivision.pulsesPerBeat
 
         try {
             track.play()
 
-            var beatInBar = 0
-
             while (session.keepRunning.get()) {
                 val config = configProvider()
-                val samplesPerBeat = samplesPerBeat(config.bpm)
-                val isAccent = config.accentFirstBeat && beatInBar == 0
+                val pulsesPerBeat = config.subdivision.pulsesPerBeat
 
-                val beat = renderBeat(
-                    samplesPerBeat = samplesPerBeat,
-                    frequencyHz = if (isAccent) ACCENT_FREQUENCY_HZ else CLICK_FREQUENCY_HZ,
-                    amplitude = if (isAccent) ACCENT_AMPLITUDE else CLICK_AMPLITUDE
+                if (beatInBar >= config.beatsPerBar) {
+                    beatInBar = 0
+                }
+                if (subdivisionIndex >= pulsesPerBeat) {
+                    subdivisionIndex = 0
+                }
+
+                val isMainBeat = subdivisionIndex == 0
+                val isCountIn = remainingCountInPulses > 0
+                val beatAccent = config.accentForBeat(beatInBar)
+
+                val effectiveAccent = when {
+                    isCountIn && beatInBar == 0 && isMainBeat ->
+                        BeatAccent.ACCENT
+                    isCountIn -> BeatAccent.NORMAL
+                    isMainBeat -> beatAccent
+                    else -> BeatAccent.NORMAL
+                }
+
+                onBeat(
+                    BeatEvent(
+                        beatInBar = beatInBar,
+                        subdivisionIndex = subdivisionIndex,
+                        isCountIn = isCountIn,
+                        accent = effectiveAccent
+                    )
                 )
+
+                val samplesPerPulse = samplesPerPulse(
+                    bpm = config.bpm,
+                    pulsesPerBeat = pulsesPerBeat
+                )
+
+                val shouldClick =
+                    effectiveAccent != BeatAccent.MUTE
+
+                val pulse = if (shouldClick) {
+                    renderClick(
+                        samplesPerPulse = samplesPerPulse,
+                        sound = config.clickSound,
+                        accent = effectiveAccent,
+                        isSubdivision = !isMainBeat
+                    )
+                } else {
+                    ShortArray(samplesPerPulse)
+                }
 
                 writeFully(
                     track = track,
-                    samples = beat,
-                    shouldContinue = { session.keepRunning.get() }
+                    samples = pulse,
+                    shouldContinue = {
+                        session.keepRunning.get()
+                    }
                 )
 
-                beatInBar = (beatInBar + 1) % config.beatsPerBar
+                if (remainingCountInPulses > 0) {
+                    remainingCountInPulses--
+                }
+
+                subdivisionIndex++
+                if (subdivisionIndex >= pulsesPerBeat) {
+                    subdivisionIndex = 0
+                    beatInBar =
+                        (beatInBar + 1) %
+                            config.beatsPerBar
+                }
             }
         } finally {
             runCatching { track.pause() }
@@ -145,8 +179,6 @@ class MetronomeEngine(
         return AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    // A metronome is foreground audio. MEDIA uses the normal
-                    // media-volume slider instead of notification/system volume.
                     .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build()
@@ -158,11 +190,18 @@ class MetronomeEngine(
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                     .build()
             )
-            .setBufferSizeInBytes(minBufferBytes.coerceAtLeast(MIN_BUFFER_BYTES))
+            .setBufferSizeInBytes(
+                minBufferBytes.coerceAtLeast(
+                    MIN_BUFFER_BYTES
+                )
+            )
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
             .also { track ->
-                check(track.state == AudioTrack.STATE_INITIALIZED) {
+                check(
+                    track.state ==
+                        AudioTrack.STATE_INITIALIZED
+                ) {
                     "AudioTrack failed to initialize"
                 }
             }
@@ -175,10 +214,12 @@ class MetronomeEngine(
     ) {
         var offset = 0
 
-        while (offset < samples.size && shouldContinue()) {
-            val remaining = samples.size - offset
+        while (
+            offset < samples.size &&
+            shouldContinue()
+        ) {
             val chunkSize = minOf(
-                remaining,
+                samples.size - offset,
                 WRITE_CHUNK_SAMPLES
             )
 
@@ -192,30 +233,98 @@ class MetronomeEngine(
             when {
                 written > 0 -> offset += written
                 written == 0 -> Unit
-                else -> error("AudioTrack write failed: $written")
+                else -> error(
+                    "AudioTrack write failed: $written"
+                )
             }
         }
     }
 
-    private fun samplesPerBeat(bpm: Int): Int =
-        (sampleRate * SECONDS_PER_MINUTE / bpm).toInt()
+    private fun samplesPerPulse(
+        bpm: Int,
+        pulsesPerBeat: Int
+    ): Int =
+        (
+            sampleRate *
+                SECONDS_PER_MINUTE /
+                bpm /
+                pulsesPerBeat
+            ).toInt().coerceAtLeast(1)
 
-    private fun renderBeat(
-        samplesPerBeat: Int,
-        frequencyHz: Double,
-        amplitude: Int
+    private fun renderClick(
+        samplesPerPulse: Int,
+        sound: ClickSound,
+        accent: BeatAccent,
+        isSubdivision: Boolean
     ): ShortArray {
-        val samples = ShortArray(samplesPerBeat)
-        val clickLength = (sampleRate * CLICK_LENGTH_SECONDS)
-            .toInt()
-            .coerceAtMost(samplesPerBeat)
+        val samples = ShortArray(samplesPerPulse)
+        val clickLength = (
+            sampleRate *
+                if (sound == ClickSound.HI_HAT) {
+                    HI_HAT_LENGTH_SECONDS
+                } else {
+                    CLICK_LENGTH_SECONDS
+                }
+            ).toInt().coerceAtMost(samplesPerPulse)
+
+        val baseAmplitude = when {
+            isSubdivision -> 10_000
+            accent == BeatAccent.ACCENT -> 25_000
+            else -> 18_000
+        }
 
         for (index in 0 until clickLength) {
-            val fade = 1.0 - index.toDouble() / clickLength
-            val wave = sin(2.0 * PI * frequencyHz * index / sampleRate)
+            val fade =
+                1.0 - index.toDouble() /
+                    clickLength.coerceAtLeast(1)
 
-            samples[index] = (wave * fade * amplitude)
-                .toInt()
+            val value = when (sound) {
+                ClickSound.DIGITAL -> {
+                    val hz = if (
+                        accent == BeatAccent.ACCENT &&
+                        !isSubdivision
+                    ) {
+                        1_800.0
+                    } else {
+                        1_200.0
+                    }
+                    sin(
+                        2.0 * PI * hz *
+                            index / sampleRate
+                    )
+                }
+
+                ClickSound.WOOD -> {
+                    val low = sin(
+                        2.0 * PI * 760.0 *
+                            index / sampleRate
+                    )
+                    val high = sin(
+                        2.0 * PI * 1_320.0 *
+                            index / sampleRate
+                    )
+                    low * 0.72 + high * 0.28
+                }
+
+                ClickSound.HI_HAT -> {
+                    val noisy =
+                        sin(index * 12.9898) *
+                            43_758.5453
+                    val fraction =
+                        noisy - floor(noisy)
+                    fraction * 2.0 - 1.0
+                }
+            }
+
+            samples[index] = (
+                value *
+                    fade *
+                    baseAmplitude
+                ).toInt()
+                .coerceIn(
+                    Short.MIN_VALUE.toInt(),
+                    Short.MAX_VALUE.toInt()
+                )
                 .toShort()
         }
 
@@ -237,11 +346,6 @@ class MetronomeEngine(
 
         const val SECONDS_PER_MINUTE = 60.0
         const val CLICK_LENGTH_SECONDS = 0.035
-
-        const val CLICK_FREQUENCY_HZ = 1_200.0
-        const val ACCENT_FREQUENCY_HZ = 1_800.0
-
-        const val CLICK_AMPLITUDE = 19_000
-        const val ACCENT_AMPLITUDE = 25_000
+        const val HI_HAT_LENGTH_SECONDS = 0.055
     }
 }

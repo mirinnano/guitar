@@ -6,6 +6,7 @@
     <string name="tab_tuner">チューナー</string>
     <string name="tab_chords">コード</string>
     <string name="tab_fretboard">指板</string>
+    <string name="tab_practice">練習</string>
 
     <string name="bpm">BPM</string>
     <string name="tap_tempo">タップテンポ</string>
@@ -16,6 +17,21 @@
     <string name="start">開始</string>
     <string name="stop">停止</string>
     <string name="metronome_error">メトロノームを開始できませんでした</string>
+    <string name="rhythm_settings">リズム設定</string>
+    <string name="time_signature">拍子</string>
+    <string name="subdivision">サブディビジョン</string>
+    <string name="beat_accents">拍ごとのアクセント</string>
+    <string name="click_sound">クリック音</string>
+    <string name="count_in">カウントイン</string>
+    <string name="off">OFF</string>
+    <string name="bars_count">%1$d小節</string>
+    <string name="speed_trainer">Speed Trainer</string>
+    <string name="speed_trainer_description">指定した小節数ごとにBPMを自動で上げます。</string>
+    <string name="start_bpm">開始BPM</string>
+    <string name="goal_bpm">目標BPM</string>
+    <string name="step_bpm">増加BPM</string>
+    <string name="bars_per_step">増加までの小節数</string>
+    <string name="bluetooth_latency_warning">Bluetooth音声は遅延が発生します。正確なクリック練習では本体スピーカーまたは有線出力を推奨します。</string>
 
     <string name="microphone_access">マイクへのアクセス</string>
     <string name="microphone_access_description">チューナーでギターの音程を検出するためにマイクを使用します。</string>
@@ -29,6 +45,12 @@
     <string name="tuning">チューニング</string>
     <string name="reference_pitch">基準ピッチ</string>
     <string name="tuner_error">マイク入力でエラーが発生しました</string>
+    <string name="target_string">対象弦</string>
+    <string name="auto">Auto</string>
+    <string name="reference_tones">基準音を鳴らす</string>
+    <string name="string_number">第%1$d弦</string>
+    <string name="input_sensitivity">入力感度</string>
+    <string name="haptic_in_tune">音程が合ったら振動</string>
 
     <string name="search_chords">コードを検索</string>
     <string name="all">すべて</string>
@@ -53,9 +75,35 @@
     <string name="chord_section_count">%1$dコード</string>
     <string name="chord_tones">構成音</string>
     <string name="chord_fingering">押さえ方</string>
+    <string name="progression">コード進行</string>
+    <string name="auto_scroll">自動スクロール</string>
+    <string name="add_chord">コードを追加</string>
+    <string name="add">追加</string>
+    <string name="search_song">曲を検索</string>
+    <string name="song_or_artist">曲名 / アーティスト</string>
+    <string name="search">検索</string>
+    <string name="searching">検索中…</string>
+    <string name="import_chordpro">ChordProを読み込む</string>
+    <string name="import_chordpro_description">自分で作成した、または利用許諾のあるChordProを貼り付けるとコード進行へ変換します。</string>
+    <string name="import_action">コード進行として読み込む</string>
+    <string name="backing_track">バッキング音源</string>
+    <string name="backing_track_description">端末内の音源を選ぶと、通知から操作できるバックグラウンド再生で練習できます。</string>
+    <string name="choose_audio">音源を選ぶ</string>
+    <string name="play">再生</string>
+    <string name="pause">一時停止</string>
+    <string name="sync_backing_track">音源位置とコード進行を同期</string>
+    <string name="sync_offset_seconds">前奏オフセット %1$.1f秒</string>
 
     <string name="highlight_note">強調する音</string>
     <string name="fretboard_footer">0〜12フレット · Standard tuning</string>
+    <string name="fretboard_footer_24">0〜24フレット · スクロール/ズーム対応</string>
+    <string name="fretboard_mode">表示モード</string>
+    <string name="single_note">単音</string>
+    <string name="scale">スケール</string>
+    <string name="root_note">ルート音</string>
+    <string name="interval_labels">度数で表示</string>
+    <string name="left_handed">左利き表示</string>
+    <string name="zoom">ズーム</string>
 
     <string name="chord_diagram_description">%1$s のコード図</string>
     <string name="fret_number">%1$dフレット</string>
