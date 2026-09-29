@@ -14,6 +14,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -76,13 +77,6 @@ fun MetronomeScreen(
             )
         }
 
-        BeatSettingsCard(
-            beatsPerBar = state.beatsPerBar,
-            accentFirstBeat = state.accentFirstBeat,
-            onBeatsPerBarChange = viewModel::setBeatsPerBar,
-            onAccentChange = viewModel::setAccentFirstBeat
-        )
-
         if (state.playbackFailed) {
             PlaybackError(
                 onDismiss = viewModel::dismissPlaybackError
@@ -108,13 +102,23 @@ fun MetronomeScreen(
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
+
+        BeatSettingsCard(
+            beatsPerBar = state.beatsPerBar,
+            accentFirstBeat = state.accentFirstBeat,
+            onBeatsPerBarChange = viewModel::setBeatsPerBar,
+            onAccentChange = viewModel::setAccentFirstBeat
+        )
     }
 }
 
 @Composable
 private fun TempoCard(bpm: Int) {
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
     ) {
         Column(
             modifier = Modifier
@@ -124,12 +128,13 @@ private fun TempoCard(bpm: Int) {
         ) {
             Text(
                 text = bpm.toString(),
-                style = MaterialTheme.typography.displayLarge
+                style = MaterialTheme.typography.displayLarge,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
             )
             Text(
                 text = stringResource(R.string.bpm),
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onPrimaryContainer
             )
         }
     }
@@ -164,7 +169,10 @@ private fun BeatSettingsCard(
     onAccentChange: (Boolean) -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
@@ -239,7 +247,10 @@ private fun PlaybackError(
     onDismiss: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer
+        )
     ) {
         Row(
             modifier = Modifier
@@ -249,7 +260,7 @@ private fun PlaybackError(
         ) {
             Text(
                 text = stringResource(R.string.metronome_error),
-                color = MaterialTheme.colorScheme.error,
+                color = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.weight(1f)
             )
             TextButton(
