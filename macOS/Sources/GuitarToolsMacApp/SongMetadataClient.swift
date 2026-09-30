@@ -18,7 +18,7 @@ struct MacSongSearchResult:
 
 actor SongMetadataClient {
 
-    private var lastRequest =
+    private var lastMusicBrainzRequest =
         Date.distantPast
 
     func search(
@@ -26,10 +26,249 @@ actor SongMetadataClient {
     ) async throws
         -> [MacSongSearchResult] {
 
+        let apiKey =
+            ProcessInfo
+                .processInfo
+                .environment[
+                    "GETSONGBPM_API_KEY"
+                ]
+            ?? UserDefaults
+                .standard
+                .string(
+                    forKey:
+                        "getsongbpm.apiKey"
+                )
+            ?? ""
+
+        if !apiKey
+            .trimmingCharacters(
+                in:
+                    .whitespacesAndNewlines
+            )
+            .isEmpty {
+            let results =
+                try? await searchGetSongBPM(
+                    query: query,
+                    apiKey: apiKey
+                )
+
+            if let results,
+               !results.isEmpty {
+                return results
+            }
+        }
+
+        return try await
+            searchMusicBrainz(
+                query: query
+            )
+    }
+
+    private func searchGetSongBPM(
+        query: String,
+        apiKey: String
+    ) async throws
+        -> [MacSongSearchResult] {
+
+        var components =
+            URLComponents(
+                string:
+                    "https://api.getsong.co/search/"
+            )!
+
+        components.queryItems = [
+            URLQueryItem(
+                name: "api_key",
+                value: apiKey
+            ),
+            URLQueryItem(
+                name: "type",
+                value: "song"
+            ),
+            URLQueryItem(
+                name: "lookup",
+                value: query
+            ),
+            URLQueryItem(
+                name: "limit",
+                value: "20"
+            )
+        ]
+
+        guard let url =
+            components.url
+        else {
+            return []
+        }
+
+        var request =
+            URLRequest(url: url)
+
+        request.timeoutInterval = 8
+        request.setValue(
+            "application/json",
+            forHTTPHeaderField:
+                "Accept"
+        )
+
+        let (
+            data,
+            response
+        ) =
+            try await URLSession
+                .shared
+                .data(
+                    for: request
+                )
+
+        guard
+            let http =
+                response
+                as? HTTPURLResponse,
+            (200..<300)
+                .contains(
+                    http.statusCode
+                )
+        else {
+            return []
+        }
+
+        let object =
+            try JSONSerialization
+                .jsonObject(
+                    with: data
+                )
+
+        let values:
+            [[String: Any]]
+
+        if let array =
+            object
+                as? [[String: Any]] {
+            values = array
+        } else if let root =
+            object
+                as? [String: Any] {
+            values =
+                root["search"]
+                    as? [[String: Any]]
+                ?? root["songs"]
+                    as? [[String: Any]]
+                ?? root["results"]
+                    as? [[String: Any]]
+                ?? []
+        } else {
+            values = []
+        }
+
+        return values
+            .compactMap {
+                item in
+
+                let id =
+                    string(
+                        item[
+                            "song_id"
+                        ]
+                    )
+                    .nonEmpty
+                    ?? string(
+                        item["id"]
+                    )
+                    .nonEmpty
+                    ?? UUID()
+                        .uuidString
+
+                guard let title =
+                    (
+                        string(
+                            item[
+                                "song_title"
+                            ]
+                        )
+                        .nonEmpty
+                        ?? string(
+                            item["title"]
+                        )
+                        .nonEmpty
+                    )
+                else {
+                    return nil
+                }
+
+                let artist =
+                    artistName(
+                        item["artist"]
+                    )
+
+                let tempo =
+                    intValue(
+                        item["tempo"]
+                    )
+
+                let timeSignature =
+                    string(
+                        item[
+                            "time_sig"
+                        ]
+                    )
+                    .nonEmpty
+
+                let key =
+                    string(
+                        item[
+                            "key_of"
+                        ]
+                    )
+                    .nonEmpty
+
+                let source =
+                    (
+                        string(
+                            item[
+                                "song_uri"
+                            ]
+                        )
+                        .nonEmpty
+                        ?? string(
+                            item[
+                                "uri"
+                            ]
+                        )
+                        .nonEmpty
+                    )
+                    .flatMap(
+                        URL.init(
+                            string:
+                        )
+                    )
+
+                return MacSongSearchResult(
+                    id: id,
+                    title: title,
+                    artist: artist,
+                    durationMs: nil,
+                    bpm: tempo,
+                    timeSignature:
+                        timeSignature,
+                    musicalKey: key,
+                    sourceName:
+                        "GetSongBPM",
+                    sourceURL:
+                        source
+                )
+            }
+    }
+
+    private func searchMusicBrainz(
+        query: String
+    ) async throws
+        -> [MacSongSearchResult] {
+
         let elapsed =
             Date()
                 .timeIntervalSince(
-                    lastRequest
+                    lastMusicBrainzRequest
                 )
 
         if elapsed < 1.05 {
@@ -42,7 +281,8 @@ actor SongMetadataClient {
             )
         }
 
-        lastRequest = Date()
+        lastMusicBrainzRequest =
+            Date()
 
         var components =
             URLComponents(
@@ -180,5 +420,78 @@ actor SongMetadataClient {
                         )
                 )
             }
+    }
+
+    private func artistName(
+        _ value: Any?
+    ) -> String {
+        if let object =
+            value
+                as? [String: Any] {
+            return string(
+                object["name"]
+            )
+        }
+
+        if let array =
+            value
+                as? [[String: Any]],
+           let first =
+            array.first {
+            return string(
+                first["name"]
+            )
+        }
+
+        return ""
+    }
+
+    private func string(
+        _ value: Any?
+    ) -> String {
+        if let value =
+            value as? String {
+            return value
+        }
+
+        if let value =
+            value as? NSNumber {
+            return value
+                .stringValue
+        }
+
+        return ""
+    }
+
+    private func intValue(
+        _ value: Any?
+    ) -> Int? {
+        if let value =
+            value as? NSNumber {
+            return value
+                .intValue
+        }
+
+        if let value =
+            value as? String {
+            return Int(
+                Double(value)
+                    .map {
+                        $0.rounded()
+                    }
+                ?? .nan
+            )
+        }
+
+        return nil
+    }
+}
+
+private extension String {
+    var nonEmpty:
+        String? {
+        isEmpty
+        ? nil
+        : self
     }
 }
