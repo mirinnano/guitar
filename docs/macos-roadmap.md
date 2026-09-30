@@ -329,17 +329,17 @@ First keep the algorithms well specified and tested on both platforms. Code shar
 - ad-hoc signed CI artifact
 - microphone/audio-input entitlement
 
-### M1 — Android feature parity 🚧
+### M1 — Android feature parity ✅ implemented
 
-- metronome
-- tuner
-- chords
-- ChordWiki viewer
-- high-precision sync
-- fretboard
-- practice
+- metronome: subdivisions / accents / click sounds / count-in / tap tempo / speed trainer ✅
+- tuner: YIN / tuning presets / custom tuning / A4 / sensitivity / reference tones ✅
+- chords: 12 roots × 16 qualities / 192 shapes / search / diagrams ✅
+- ChordWiki viewer: native rendering / fingering / YouTube mini-player ✅
+- high-precision sync: anchors / piecewise warp / calibrated seeking / local-BPM metronome ✅
+- fretboard: note / scale / chord / intervals / tunings / left-handed / 12–24 frets ✅
+- practice: progression editing / ChordPro import / MusicBrainz search / local backing track / sync offset ✅
 
-### M2 — Audio Interface MVP 🚧 in progress
+### M2 — Audio Interface MVP ✅ first implementation
 
 - AVAudioEngine input ✅
 - input level / clipping indication ✅
