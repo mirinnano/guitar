@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.School
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import dev.mirinnano.guitartools.R
 import dev.mirinnano.guitartools.ui.chords.ChordsScreen
+import dev.mirinnano.guitartools.ui.chordwiki.ChordWikiScreen
 import dev.mirinnano.guitartools.ui.fretboard.FretboardScreen
 import dev.mirinnano.guitartools.ui.metronome.MetronomeScreen
 import dev.mirinnano.guitartools.practice.PracticeScreen
@@ -38,6 +40,7 @@ private enum class ToolTab(
     Metronome(R.string.tab_metronome, Icons.Rounded.Timer),
     Tuner(R.string.tab_tuner, Icons.Rounded.GraphicEq),
     Chords(R.string.tab_chords, Icons.Rounded.LibraryMusic),
+    ChordWiki(R.string.tab_chordwiki, Icons.Rounded.MusicNote),
     Fretboard(R.string.tab_fretboard, Icons.Rounded.GridOn),
     Practice(R.string.tab_practice, Icons.Rounded.School)
 }
@@ -89,6 +92,7 @@ fun GuitarToolsApp() {
             ToolTab.Metronome -> MetronomeScreen(screenModifier)
             ToolTab.Tuner -> TunerScreen(screenModifier)
             ToolTab.Chords -> ChordsScreen(screenModifier)
+            ToolTab.ChordWiki -> ChordWikiScreen(screenModifier)
             ToolTab.Fretboard -> FretboardScreen(screenModifier)
             ToolTab.Practice -> PracticeScreen(screenModifier)
         }
