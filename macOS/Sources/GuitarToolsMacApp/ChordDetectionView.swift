@@ -392,7 +392,7 @@ private struct ChromaCell: View {
         }
         .padding(10)
         .background(
-            .background.opacity(0.65),
+            Color.secondary.opacity(0.05),
             in:
                 RoundedRectangle(
                     cornerRadius: 9,
