@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ChartLineKind: Sendable {
+public enum ChartLineKind: Sendable, Equatable {
     case content
     case comment
     case blank
