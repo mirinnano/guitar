@@ -63,6 +63,12 @@ final class ChordFollowPracticeModel:
     private let audio:
         AudioInputModel
 
+    private let clock:
+        any AudioHostClock
+
+    private let sessionStore:
+        PracticeSessionStore
+
     private let client =
         ChordWikiMacClient()
 
@@ -76,10 +82,22 @@ final class ChordFollowPracticeModel:
     private var pending:
         PendingAttempt?
 
+    private var sessionStartedAt:
+        Date?
+
     init(
-        audio: AudioInputModel
+        audio: AudioInputModel,
+        clock:
+            any AudioHostClock =
+            SystemAudioHostClock(),
+        sessionStore:
+            PracticeSessionStore =
+            PracticeSessionStore()
     ) {
         self.audio = audio
+        self.clock = clock
+        self.sessionStore =
+            sessionStore
 
         audio.onOnset = {
             [weak self]
@@ -192,6 +210,7 @@ final class ChordFollowPracticeModel:
         _ result:
             ChordWikiSearchResult
     ) {
+        persistCurrentSession()
         pause()
 
         isLoadingChart = true
@@ -219,6 +238,8 @@ final class ChordFollowPracticeModel:
                 self.claimedEventIDs = []
                 self.pending = nil
                 self.pendingExpected = nil
+                self.sessionStartedAt =
+                    nil
                 self.isLoadingChart =
                     false
             } catch {
@@ -231,6 +252,7 @@ final class ChordFollowPracticeModel:
     }
 
     func closeChart() {
+        persistCurrentSession()
         pause()
         chart = nil
         timeline = nil
@@ -240,6 +262,7 @@ final class ChordFollowPracticeModel:
         pending = nil
         pendingExpected = nil
         claimedEventIDs = []
+        sessionStartedAt = nil
     }
 
     func togglePlayback() {
@@ -260,10 +283,12 @@ final class ChordFollowPracticeModel:
 
         if currentSeconds >=
             durationSeconds {
+            persistCurrentSession()
             currentSeconds = 0
             claimedEventIDs = []
             attempts = []
             lastAttempt = nil
+            sessionStartedAt = nil
         }
 
         if !audio.isRunning {
@@ -271,10 +296,13 @@ final class ChordFollowPracticeModel:
                 .requestPermissionAndStart()
         }
 
+        if sessionStartedAt == nil {
+            sessionStartedAt =
+                Date()
+        }
+
         playbackStartHostSeconds =
-            ProcessInfo
-                .processInfo
-                .systemUptime -
+            clock.nowSeconds() -
             currentSeconds
 
         isPlaying = true
@@ -292,6 +320,7 @@ final class ChordFollowPracticeModel:
     }
 
     func resetSession() {
+        persistCurrentSession()
         pause()
         currentSeconds = 0
         attempts = []
@@ -299,6 +328,7 @@ final class ChordFollowPracticeModel:
         claimedEventIDs = []
         pending = nil
         pendingExpected = nil
+        sessionStartedAt = nil
     }
 
     func seek(
@@ -315,9 +345,7 @@ final class ChordFollowPracticeModel:
 
         if isPlaying {
             playbackStartHostSeconds =
-                ProcessInfo
-                    .processInfo
-                    .systemUptime -
+                clock.nowSeconds() -
                 currentSeconds
         }
     }
@@ -356,9 +384,7 @@ final class ChordFollowPracticeModel:
         }
 
         if let pending,
-           ProcessInfo
-            .processInfo
-            .systemUptime -
+           clock.nowSeconds() -
             pending.onsetTimestamp >
             0.8 {
             finalizePending(
@@ -371,9 +397,7 @@ final class ChordFollowPracticeModel:
         currentSeconds =
             min(
                 max(
-                    ProcessInfo
-                        .processInfo
-                        .systemUptime -
+                    clock.nowSeconds() -
                     playbackStartHostSeconds,
                     0
                 ),
@@ -536,6 +560,41 @@ final class ChordFollowPracticeModel:
 
         self.pending = nil
         pendingExpected = nil
+    }
+
+    private func persistCurrentSession() {
+        guard
+            let chart,
+            let sessionStartedAt,
+            !attempts.isEmpty
+        else {
+            return
+        }
+
+        let session =
+            PracticeSession(
+                startedAt:
+                    sessionStartedAt,
+                endedAt: Date(),
+                title: chart.title,
+                artist: chart.artist,
+                sourceIdentifier:
+                    chart.sourceURL?
+                        .absoluteString,
+                bpm: bpm,
+                beatsPerBar:
+                    chart.beatsPerBar,
+                onTimeToleranceMs:
+                    onTimeToleranceMs,
+                inputLatencyCompensationMs:
+                    inputLatencyCompensationMs,
+                attempts: attempts
+            )
+
+        Task {
+            try? await sessionStore
+                .save(session)
+        }
     }
 
     private struct PendingAttempt {
