@@ -18,8 +18,8 @@ struct ChordsView:
     private let columns = [
         GridItem(
             .adaptive(
-                minimum: 150,
-                maximum: 190
+                minimum: 160,
+                maximum: 210
             ),
             spacing: 12
         )
@@ -29,62 +29,60 @@ struct ChordsView:
         ScrollView {
             LazyVStack(
                 alignment: .leading,
-                spacing: 18
+                spacing: 22
             ) {
-                filters
-
-                ForEach(
-                    displayedRoots
+                MacPageHeader(
+                    "コード",
+                    subtitle:
+                        "12ルート × 16種類の押さえ方"
                 ) {
-                    root in
+                    MacStatusPill(
+                        text:
+                            "\(resultCount) chords",
+                        systemImage:
+                            "guitars",
+                        role: .neutral
+                    )
+                }
 
-                    let shapes =
-                        filteredShapes(
-                            root: root
-                        )
+                filterBar
 
-                    if !shapes.isEmpty {
-                        VStack(
-                            alignment:
-                                .leading,
-                            spacing: 10
-                        ) {
+                if resultCount == 0 {
+                    ContentUnavailableView(
+                        "コードが見つかりません",
+                        systemImage:
+                            "magnifyingglass",
+                        description:
                             Text(
-                                root.displayName
+                                "検索語またはフィルターを変更してください。"
                             )
-                            .font(.title2)
-                            .fontWeight(
-                                .semibold
+                    )
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: 320
+                    )
+                } else {
+                    ForEach(
+                        displayedRoots
+                    ) {
+                        root in
+
+                        let shapes =
+                            filteredShapes(
+                                root: root
                             )
 
-                            LazyVGrid(
-                                columns:
-                                    columns,
-                                spacing: 12
-                            ) {
-                                ForEach(
-                                    shapes
-                                ) {
-                                    shape in
-
-                                    GroupBox {
-                                        ChordShapeDiagram(
-                                            shape:
-                                                shape,
-                                            compact:
-                                                true
-                                        )
-                                        .padding(
-                                            6
-                                        )
-                                    }
-                                }
-                            }
+                        if !shapes.isEmpty {
+                            rootSection(
+                                root,
+                                shapes: shapes
+                            )
                         }
                     }
                 }
             }
-            .padding(22)
+            .padding(26)
+            .macPageWidth(1_180)
         }
         .navigationTitle(
             "コード"
@@ -97,69 +95,54 @@ struct ChordsView:
         )
     }
 
-    private var filters:
+    private var filterBar:
         some View {
-        VStack(
-            alignment: .leading,
-            spacing: 10
+
+        MacSection(
+            "フィルター"
         ) {
-            ScrollView(
-                .horizontal
+            HStack(
+                spacing: 14
             ) {
-                HStack {
-                    Button(
-                        "すべて"
-                    ) {
-                        selectedRoot =
-                            nil
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(
-                        selectedRoot == nil
-                        ? Color.accentColor
-                        : Color.secondary
-                    )
+                Picker(
+                    "Root",
+                    selection:
+                        $selectedRoot
+                ) {
+                    Text("All roots")
+                        .tag(
+                            Optional<GuitarNote>
+                                .none
+                        )
 
                     ForEach(
-                        GuitarNote
-                            .allCases
+                        GuitarNote.allCases
                     ) {
                         note in
 
-                        Button(
+                        Text(
                             note.displayName
-                        ) {
-                            selectedRoot =
-                                note
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(
-                            selectedRoot ==
-                            note
-                            ? Color.accentColor
-                            : Color.secondary
+                        )
+                        .tag(
+                            Optional(note)
                         )
                     }
                 }
-            }
+                .frame(
+                    minWidth: 150
+                )
 
-            ScrollView(
-                .horizontal
-            ) {
-                HStack {
-                    Button(
-                        "All qualities"
-                    ) {
-                        selectedQuality =
-                            nil
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(
-                        selectedQuality ==
-                        nil
-                        ? Color.accentColor
-                        : Color.secondary
-                    )
+                Picker(
+                    "Quality",
+                    selection:
+                        $selectedQuality
+                ) {
+                    Text("All qualities")
+                        .tag(
+                            Optional<
+                                GuitarChordQuality
+                            >.none
+                        )
 
                     ForEach(
                         GuitarChordQuality
@@ -167,21 +150,99 @@ struct ChordsView:
                     ) {
                         quality in
 
-                        Button(
+                        Text(
                             quality
                                 .displayName
-                        ) {
-                            selectedQuality =
+                        )
+                        .tag(
+                            Optional(
                                 quality
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(
-                            selectedQuality ==
-                            quality
-                            ? Color.accentColor
-                            : Color.secondary
+                            )
                         )
                     }
+                }
+                .frame(
+                    minWidth: 190
+                )
+
+                Spacer()
+
+                if selectedRoot != nil ||
+                    selectedQuality != nil ||
+                    !query.isEmpty {
+                    Button(
+                        "リセット"
+                    ) {
+                        selectedRoot = nil
+                        selectedQuality =
+                            nil
+                        query = ""
+                    }
+                }
+            }
+        }
+    }
+
+    private func rootSection(
+        _ root: GuitarNote,
+        shapes:
+            [GuitarChordShape]
+    ) -> some View {
+
+        VStack(
+            alignment: .leading,
+            spacing: 10
+        ) {
+            HStack {
+                Text(
+                    root.displayName
+                )
+                .font(
+                    .title2
+                        .weight(
+                            .semibold
+                        )
+                )
+
+                Text(
+                    "\(shapes.count)"
+                )
+                .font(.caption)
+                .foregroundStyle(
+                    .secondary
+                )
+
+                Spacer()
+            }
+
+            LazyVGrid(
+                columns: columns,
+                alignment: .leading,
+                spacing: 12
+            ) {
+                ForEach(
+                    shapes
+                ) {
+                    shape in
+
+                    ChordShapeDiagram(
+                        shape: shape,
+                        compact: true
+                    )
+                    .padding(12)
+                    .frame(
+                        maxWidth: .infinity
+                    )
+                    .background(
+                        .quaternary
+                            .opacity(0.16),
+                        in:
+                            RoundedRectangle(
+                                cornerRadius: 12,
+                                style:
+                                    .continuous
+                            )
+                    )
                 }
             }
         }
@@ -192,9 +253,22 @@ struct ChordsView:
         if let selectedRoot {
             [selectedRoot]
         } else {
-            GuitarNote
-                .allCases
+            GuitarNote.allCases
         }
+    }
+
+    private var resultCount:
+        Int {
+        displayedRoots
+            .reduce(0) {
+                result,
+                root in
+
+                result +
+                    filteredShapes(
+                        root: root
+                    ).count
+            }
     }
 
     private func filteredShapes(
