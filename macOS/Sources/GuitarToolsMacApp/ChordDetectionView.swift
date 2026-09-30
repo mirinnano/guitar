@@ -182,59 +182,17 @@ struct ChordDetectionView: View {
         MacSection(
             "Audio Input",
             subtitle:
-                "入力ソースとレベル"
+                "CoreAudio入力ソース、チャンネル、レベル"
         ) {
             VStack(
                 alignment: .leading,
                 spacing: 14
             ) {
-                LabeledContent(
-                    "Device"
-                ) {
-                    Text(
-                        audio.inputLabel
-                    )
-                    .lineLimit(1)
-                }
+                AudioInputDevicePicker(
+                    audio: audio
+                )
 
-                if audio.sampleRate > 0 {
-                    LabeledContent(
-                        "Format"
-                    ) {
-                        Text(
-                            "\(Int(audio.sampleRate)) Hz · \(audio.availableChannels) ch"
-                        )
-                        .monospacedDigit()
-                    }
-                }
-
-                if audio.availableChannels >
-                    1 {
-                    Picker(
-                        "Channel",
-                        selection:
-                            $audio.selectedChannel
-                    ) {
-                        ForEach(
-                            0..<audio
-                                .availableChannels,
-                            id: \.self
-                        ) {
-                            index in
-
-                            Text(
-                                "Ch \(index + 1)"
-                            )
-                            .tag(index)
-                        }
-                    }
-                    .pickerStyle(
-                        .segmented
-                    )
-                    .disabled(
-                        audio.isRunning
-                    )
-                }
+                Divider()
 
                 MacAudioLevelMeter(
                     levelDBFS:
