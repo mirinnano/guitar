@@ -2,6 +2,7 @@ import Foundation
 
 public enum HarmonyResult:
     String,
+    Codable,
     Sendable,
     Equatable {
 
@@ -12,6 +13,7 @@ public enum HarmonyResult:
 
 public enum TimingResult:
     String,
+    Codable,
     Sendable,
     Equatable {
 
@@ -21,6 +23,7 @@ public enum TimingResult:
 }
 
 public struct PracticeAttempt:
+    Codable,
     Sendable,
     Equatable,
     Identifiable {
@@ -58,6 +61,7 @@ public struct PracticeAttempt:
 }
 
 public struct PracticeStatistics:
+    Codable,
     Sendable,
     Equatable {
 

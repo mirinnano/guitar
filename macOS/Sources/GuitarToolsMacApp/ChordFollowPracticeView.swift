@@ -17,7 +17,9 @@ struct ChordFollowPracticeView:
         true
 
     init(
-        audio: AudioInputModel
+        audio: AudioInputModel,
+        preferencesStore:
+            AppPreferencesStore
     ) {
         self.audio = audio
 
@@ -25,7 +27,9 @@ struct ChordFollowPracticeView:
             StateObject(
                 wrappedValue:
                     ChordFollowPracticeModel(
-                        audio: audio
+                        audio: audio,
+                        preferencesStore:
+                            preferencesStore
                     )
             )
     }

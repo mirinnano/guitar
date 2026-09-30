@@ -89,6 +89,17 @@ final class ChordWikiViewerModel:
     private let metronome =
         MacMetronomeEngine()
 
+    private let clock:
+        any AudioHostClock
+
+    init(
+        clock:
+            any AudioHostClock =
+            SystemAudioHostClock()
+    ) {
+        self.clock = clock
+    }
+
     private var timer: Timer?
 
     private var internalStartBeat =
@@ -273,9 +284,7 @@ final class ChordWikiViewerModel:
             currentBeat
 
         internalStartTime =
-            ProcessInfo
-                .processInfo
-                .systemUptime
+            clock.nowSeconds()
 
         isPlaying = true
         installTimer()
@@ -320,9 +329,7 @@ final class ChordWikiViewerModel:
             internalStartBeat =
                 currentBeat
             internalStartTime =
-                ProcessInfo
-                    .processInfo
-                    .systemUptime
+                clock.nowSeconds()
         }
 
         if isPlaying {
@@ -406,9 +413,7 @@ final class ChordWikiViewerModel:
             youtubePlaying
 
         lastVideoSampleAt =
-            ProcessInfo
-                .processInfo
-                .systemUptime
+            clock.nowSeconds()
 
         lastVideoPosition =
             max(
@@ -713,9 +718,7 @@ final class ChordWikiViewerModel:
         }
 
         let elapsed =
-            ProcessInfo
-                .processInfo
-                .systemUptime -
+            clock.nowSeconds() -
             internalStartTime
 
         currentBeat =
@@ -748,9 +751,7 @@ final class ChordWikiViewerModel:
         }
 
         let elapsed =
-            ProcessInfo
-                .processInfo
-                .systemUptime -
+            clock.nowSeconds() -
             lastVideoSampleAt
 
         let estimate =

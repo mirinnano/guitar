@@ -59,6 +59,9 @@ final class AudioInputModel:
     private let pipeline =
         LiveChordAnalysisPipeline()
 
+    private let clock:
+        any AudioHostClock
+
     private let handlerLock =
         NSLock()
 
@@ -67,7 +70,13 @@ final class AudioInputModel:
 
     private var tapInstalled = false
 
-    init() {
+    init(
+        clock:
+            any AudioHostClock =
+            SystemAudioHostClock()
+    ) {
+        self.clock = clock
+
         pipeline.onResult = {
             [weak self]
             estimate,
@@ -298,9 +307,7 @@ final class AudioInputModel:
                             )
                 } else {
                     startTime =
-                        ProcessInfo
-                            .processInfo
-                            .systemUptime -
+                        clock.nowSeconds() -
                         Double(frameCount) /
                         format.sampleRate
                 }

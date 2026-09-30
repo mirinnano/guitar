@@ -494,19 +494,41 @@ final class MacMetronomeEngine {
 final class MetronomeModel:
     ObservableObject {
 
-    @Published
-    var bpm = 120
+    private let preferencesStore:
+        AppPreferencesStore
+
+    private let clock:
+        any AudioHostClock
 
     @Published
-    var beatsPerBar = 4
+    var bpm = 120 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
-    var beatUnit = 4
+    var beatsPerBar = 4 {
+        didSet {
+            persistPreferences()
+        }
+    }
+
+    @Published
+    var beatUnit = 4 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
     var subdivision:
         MacMetronomeSubdivision =
-        .quarter
+        .quarter {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
     var accents:
@@ -516,15 +538,27 @@ final class MetronomeModel:
             .normal,
             .normal,
             .normal
-        ]
+        ] {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
     var clickSound:
         MacClickSound =
-        .digital
+        .digital {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
-    var countInBars = 0
+    var countInBars = 0 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published private(set)
     var currentBeat:
@@ -541,19 +575,39 @@ final class MetronomeModel:
 
     @Published
     var speedTrainerEnabled =
-        false
+        false {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
-    var speedStartBpm = 60
+    var speedStartBpm = 60 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
-    var speedEndBpm = 120
+    var speedEndBpm = 120 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
-    var speedStepBpm = 5
+    var speedStepBpm = 5 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
-    var speedBarsPerStep = 4
+    var speedBarsPerStep = 4 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published private(set)
     var speedCompletedBars = 0
@@ -563,6 +617,81 @@ final class MetronomeModel:
 
     private var tapTempo =
         TapTempoCalculator()
+
+    init(
+        preferencesStore:
+            AppPreferencesStore,
+        clock:
+            any AudioHostClock =
+            SystemAudioHostClock()
+    ) {
+        self.preferencesStore =
+            preferencesStore
+        self.clock = clock
+
+        let saved =
+            preferencesStore
+                .value
+                .metronome
+
+        bpm = saved.bpm
+        beatsPerBar =
+            saved.beatsPerBar
+        beatUnit =
+            saved.beatUnit
+        subdivision =
+            MacMetronomeSubdivision(
+                rawValue:
+                    saved
+                        .subdivisionRawValue
+            )
+            ?? .quarter
+
+        let restoredAccents =
+            saved.accentRawValues
+                .compactMap {
+                    MacBeatAccent(
+                        rawValue: $0
+                    )
+                }
+
+        accents =
+            restoredAccents.isEmpty
+            ? [
+                .accent,
+                .normal,
+                .normal,
+                .normal
+            ]
+            : restoredAccents
+
+        clickSound =
+            MacClickSound(
+                rawValue:
+                    saved
+                        .clickSoundRawValue
+            )
+            ?? .digital
+
+        countInBars =
+            saved.countInBars
+        speedTrainerEnabled =
+            saved
+                .speedTrainerEnabled
+        speedStartBpm =
+            saved.speedStartBPM
+        speedEndBpm =
+            saved.speedEndBPM
+        speedStepBpm =
+            saved.speedStepBPM
+        speedBarsPerStep =
+            saved.speedBarsPerStep
+
+        setTimeSignature(
+            beats: beatsPerBar,
+            unit: beatUnit
+        )
+    }
 
     func changeBpm(
         _ delta: Int
@@ -582,9 +711,7 @@ final class MetronomeModel:
         if let tempo =
             tapTempo.tap(
                 timestampSeconds:
-                    ProcessInfo
-                        .processInfo
-                        .systemUptime
+                    clock.nowSeconds()
             ) {
             bpm = tempo
         }
@@ -758,5 +885,45 @@ final class MetronomeModel:
             speedCompletedBars =
                 completed
         }
+    }
+
+    private func persistPreferences() {
+        preferencesStore
+            .update {
+                value in
+
+                value.metronome =
+                    MetronomePreferences(
+                        bpm: self.bpm,
+                        beatsPerBar:
+                            self.beatsPerBar,
+                        beatUnit:
+                            self.beatUnit,
+                        subdivisionRawValue:
+                            self.subdivision
+                                .rawValue,
+                        accentRawValues:
+                            self.accents
+                                .map(
+                                    \.rawValue
+                                ),
+                        clickSoundRawValue:
+                            self.clickSound
+                                .rawValue,
+                        countInBars:
+                            self.countInBars,
+                        speedTrainerEnabled:
+                            self
+                                .speedTrainerEnabled,
+                        speedStartBPM:
+                            self.speedStartBpm,
+                        speedEndBPM:
+                            self.speedEndBpm,
+                        speedStepBPM:
+                            self.speedStepBpm,
+                        speedBarsPerStep:
+                            self.speedBarsPerStep
+                    )
+            }
     }
 }

@@ -26,14 +26,18 @@ struct TunerView:
     ]
 
     init(
-        audio: AudioInputModel
+        audio: AudioInputModel,
+        preferencesStore:
+            AppPreferencesStore
     ) {
         self.audio = audio
         _model =
             StateObject(
                 wrappedValue:
                     TunerModel(
-                        audio: audio
+                        audio: audio,
+                        preferencesStore:
+                            preferencesStore
                     )
             )
     }

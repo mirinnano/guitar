@@ -58,6 +58,10 @@ struct ContentView: View {
     private var audio =
         AudioInputModel()
 
+    @StateObject
+    private var preferences =
+        AppPreferencesStore()
+
     @State
     private var selection:
         MacTool? =
@@ -138,6 +142,27 @@ struct ContentView: View {
         .navigationSplitViewStyle(
             .balanced
         )
+        .onAppear {
+            audio.selectedChannel =
+                preferences
+                    .value
+                    .audio
+                    .selectedChannel
+        }
+        .onChange(
+            of:
+                audio.selectedChannel
+        ) {
+            channel in
+
+            preferences.update {
+                value in
+
+                value.audio
+                    .selectedChannel =
+                    channel
+            }
+        }
         .onReceive(
             NotificationCenter
                 .default
@@ -158,11 +183,16 @@ struct ContentView: View {
 
         switch selection {
         case .metronome:
-            MetronomeView()
+            MetronomeView(
+                preferencesStore:
+                    preferences
+            )
 
         case .tuner:
             TunerView(
-                audio: audio
+                audio: audio,
+                preferencesStore:
+                    preferences
             )
 
         case .chords:
@@ -179,7 +209,9 @@ struct ContentView: View {
 
         case .chordFollow:
             ChordFollowPracticeView(
-                audio: audio
+                audio: audio,
+                preferencesStore:
+                    preferences
             )
 
         case .chordDetection:

@@ -4,8 +4,22 @@ struct MetronomeView:
     View {
 
     @StateObject
-    private var model =
-        MetronomeModel()
+    private var model:
+        MetronomeModel
+
+    init(
+        preferencesStore:
+            AppPreferencesStore
+    ) {
+        _model =
+            StateObject(
+                wrappedValue:
+                    MetronomeModel(
+                        preferencesStore:
+                            preferencesStore
+                    )
+            )
+    }
 
     private let settingsColumns = [
         GridItem(
