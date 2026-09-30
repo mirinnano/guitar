@@ -207,6 +207,17 @@ struct ProgressionPracticeView:
                             .secondary
                         )
                 }
+
+                if !model.musicalKey
+                    .isEmpty {
+                    Text(
+                        "Key \(model.musicalKey)"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
             }
 
             Spacer()
@@ -848,6 +859,12 @@ private struct SongSearchSheet:
     var model:
         ProgressionPracticeModel
 
+    @AppStorage(
+        "getsongbpm.apiKey"
+    )
+    private var getSongBPMAPIKey =
+        ""
+
     @Environment(
         \.dismiss
     )
@@ -884,6 +901,33 @@ private struct SongSearchSheet:
                 )
             }
 
+            DisclosureGroup(
+                "BPM / Key metadata"
+            ) {
+                VStack(
+                    alignment: .leading,
+                    spacing: 6
+                ) {
+                    SecureField(
+                        "GetSongBPM API key（任意）",
+                        text:
+                            $getSongBPMAPIKey
+                    )
+
+                    Text(
+                        "キーが設定されている場合はGetSongBPMを優先し、BPM・キー・拍子を取得します。未設定または検索失敗時はMusicBrainzへフォールバックします。"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+                .padding(
+                    .top,
+                    4
+                )
+            }
+
             if model
                 .isSearching {
                 ProgressView()
@@ -916,6 +960,37 @@ private struct SongSearchSheet:
                         )
                         .foregroundStyle(
                             .secondary
+                        )
+
+                        HStack(
+                            spacing: 8
+                        ) {
+                            Text(
+                                song.sourceName
+                            )
+
+                            if let bpm =
+                                song.bpm {
+                                Text(
+                                    "\(bpm) BPM"
+                                )
+                            }
+
+                            if let key =
+                                song.musicalKey {
+                                Text(
+                                    "Key \(key)"
+                                )
+                            }
+
+                            if let meter =
+                                song.timeSignature {
+                                Text(meter)
+                            }
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(
+                            .tertiary
                         )
                     }
                 }
