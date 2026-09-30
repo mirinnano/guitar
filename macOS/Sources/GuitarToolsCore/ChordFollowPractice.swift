@@ -2,7 +2,8 @@ import Foundation
 
 public enum HarmonyResult:
     String,
-    Sendable {
+    Sendable,
+    Equatable {
 
     case correct
     case incorrect
@@ -11,7 +12,8 @@ public enum HarmonyResult:
 
 public enum TimingResult:
     String,
-    Sendable {
+    Sendable,
+    Equatable {
 
     case early
     case onTime
