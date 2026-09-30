@@ -42,6 +42,7 @@ public struct ChordChart: Sendable, Equatable {
     public let beatUnit: Int
     public let lines: [ChartLine]
     public let sourceURL: URL?
+    public let youtubeVideoID: String?
 
     public init(
         sourceTitle: String,
@@ -52,7 +53,8 @@ public struct ChordChart: Sendable, Equatable {
         beatsPerBar: Int = 4,
         beatUnit: Int = 4,
         lines: [ChartLine],
-        sourceURL: URL? = nil
+        sourceURL: URL? = nil,
+        youtubeVideoID: String? = nil
     ) {
         self.sourceTitle = sourceTitle
         self.title = title
@@ -63,6 +65,8 @@ public struct ChordChart: Sendable, Equatable {
         self.beatUnit = beatUnit
         self.lines = lines
         self.sourceURL = sourceURL
+        self.youtubeVideoID =
+            youtubeVideoID
     }
 }
 
@@ -150,6 +154,56 @@ public struct ChordTimeline: Sendable, Equatable {
             beat < $0.startBeat +
                 $0.durationBeats
         }
+    }
+
+    public func milliseconds(
+        forBeat beat: Double,
+        bpm: Int
+    ) -> Int64 {
+        Int64(
+            (
+                seconds(
+                    forBeat: beat,
+                    bpm: bpm
+                ) *
+                1_000
+            ).rounded()
+        )
+    }
+
+    public func beat(
+        forMilliseconds value: Int64,
+        bpm: Int
+    ) -> Double {
+        beat(
+            forSeconds:
+                Double(
+                    max(
+                        value,
+                        0
+                    )
+                ) /
+                1_000,
+            bpm: bpm
+        )
+    }
+
+    public func barNumber(
+        atBeat beat: Double
+    ) -> Int {
+        guard beatsPerBar > 0
+        else {
+            return 1
+        }
+
+        return Int(
+            floor(
+                max(beat, 0) /
+                Double(
+                    beatsPerBar
+                )
+            )
+        ) + 1
     }
 }
 
@@ -315,8 +369,53 @@ public enum ChordChartParser {
             beatsPerBar: beatsPerBar,
             beatUnit: beatUnit,
             lines: lines,
-            sourceURL: sourceURL
+            sourceURL: sourceURL,
+            youtubeVideoID:
+                extractYouTubeVideoID(
+                    source
+                )
         )
+    }
+
+    private static func extractYouTubeVideoID(
+        _ source: String
+    ) -> String? {
+        let patterns = [
+            #"https?://(?:www.)?youtube.com/watch?[^s}]*?v=([A-Za-z0-9_-]{11})"#,
+            #"https?://youtu.be/([A-Za-z0-9_-]{11})"#,
+            #"https?://(?:www.)?youtube.com/embed/([A-Za-z0-9_-]{11})"#,
+            #"{(?:youtube|yt)s*:s*([A-Za-z0-9_-]{11})s*}"#
+        ]
+
+        for pattern in patterns {
+            guard let regex =
+                try? NSRegularExpression(
+                    pattern: pattern,
+                    options:
+                        [.caseInsensitive]
+                )
+            else {
+                continue
+            }
+
+            let ns = source as NSString
+
+            if let match =
+                regex.firstMatch(
+                    in: source,
+                    range: NSRange(
+                        location: 0,
+                        length: ns.length
+                    )
+                ) {
+                return ns.substring(
+                    with:
+                        match.range(at: 1)
+                )
+            }
+        }
+
+        return nil
     }
 
     private static func parseContentLine(
