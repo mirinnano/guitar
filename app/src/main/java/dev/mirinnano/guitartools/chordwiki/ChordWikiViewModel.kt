@@ -556,8 +556,9 @@ class ChordWikiViewModel(
         }
     }
 
-    fun addSyncAnchor(
-        event: TimedChordEvent
+    fun addSyncAnchorAt(
+        event: TimedChordEvent,
+        captureAtMs: Long
     ) {
         val state =
             _uiState.value
@@ -573,7 +574,8 @@ class ChordWikiViewModel(
 
         val positionMs =
             estimatedYoutubePositionMs(
-                state
+                state = state,
+                atMs = captureAtMs
             )
 
         val candidate =
@@ -1420,7 +1422,8 @@ class ChordWikiViewModel(
     }
 
     private fun estimatedYoutubePositionMs(
-        state: ChordWikiUiState
+        state: ChordWikiUiState,
+        atMs: Long = nowMs()
     ): Long {
         val base =
             lastYoutubePositionMs
@@ -1441,10 +1444,8 @@ class ChordWikiViewModel(
         }
 
         val elapsed =
-            (
-                nowMs() -
-                    sampleAt
-                ).coerceAtLeast(0L)
+            atMs -
+                sampleAt
 
         val estimate =
             base +
