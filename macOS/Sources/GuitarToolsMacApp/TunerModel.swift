@@ -8,18 +8,30 @@ final class TunerModel:
     ObservableObject {
 
     @Published
-    var a4Hz = 440.0
+    var a4Hz = 440.0 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
     var selectedTuning =
-        GuitarTuning.standard
+        GuitarTuning.standard {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
     var lockedStringNumber:
         Int?
 
     @Published
-    var sensitivity = 0.6
+    var sensitivity = 0.6 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published private(set)
     var reading:
@@ -31,6 +43,9 @@ final class TunerModel:
 
     private let audio:
         AudioInputModel
+
+    private let preferencesStore:
+        AppPreferencesStore
 
     private let detector =
         YinPitchDetector()
@@ -49,9 +64,54 @@ final class TunerModel:
         [Double] = []
 
     init(
-        audio: AudioInputModel
+        audio: AudioInputModel,
+        preferencesStore:
+            AppPreferencesStore
     ) {
         self.audio = audio
+        self.preferencesStore =
+            preferencesStore
+
+        let saved =
+            preferencesStore
+                .value
+                .tuner
+
+        a4Hz = saved.a4Hz
+        sensitivity =
+            saved.sensitivity
+
+        if saved.tuningID ==
+            "custom" {
+            var custom =
+                GuitarTuning
+                    .customDefault
+
+            for (
+                stringNumber,
+                midi
+            ) in saved
+                .customStringMIDI {
+                custom =
+                    custom.withStringMIDI(
+                        stringNumber:
+                            stringNumber,
+                        midi: midi
+                    )
+            }
+
+            selectedTuning =
+                custom
+        } else {
+            selectedTuning =
+                GuitarTuning
+                    .presets
+                    .first {
+                        $0.id ==
+                            saved.tuningID
+                    }
+                ?? .standard
+        }
     }
 
     func start() {
@@ -264,6 +324,40 @@ final class TunerModel:
                 )
 
         retarget()
+    }
+
+    private func persistPreferences() {
+        preferencesStore
+            .update {
+                value in
+
+                value.tuner.a4Hz =
+                    self.a4Hz
+                value.tuner.tuningID =
+                    self.selectedTuning.id
+                value.tuner.sensitivity =
+                    self.sensitivity
+
+                if self
+                    .selectedTuning
+                    .id ==
+                    "custom" {
+                    value.tuner
+                        .customStringMIDI =
+                        Dictionary(
+                            uniqueKeysWithValues:
+                                self
+                                    .selectedTuning
+                                    .strings
+                                    .map {
+                                        (
+                                            $0.stringNumber,
+                                            $0.midi
+                                        )
+                                    }
+                        )
+                }
+            }
     }
 
     private func retarget() {
