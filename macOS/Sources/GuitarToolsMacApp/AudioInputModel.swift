@@ -77,6 +77,12 @@ final class AudioInputModel:
             }
     }
 
+    var selectedDeviceUnavailable:
+        Bool {
+        selectedDeviceUID != nil &&
+        selectedDevice == nil
+    }
+
     typealias PCMFrameHandler =
         (
             _ samples: [Float],
@@ -233,23 +239,47 @@ final class AudioInputModel:
         }
     }
 
+    func selectInputChannel(
+        _ channel: Int
+    ) {
+        let maximum =
+            max(
+                availableChannels - 1,
+                0
+            )
+
+        let next =
+            min(
+                max(channel, 0),
+                maximum
+            )
+
+        guard next !=
+            selectedChannel
+        else {
+            return
+        }
+
+        let restart =
+            isRunning
+
+        if restart {
+            stop()
+        }
+
+        selectedChannel =
+            next
+
+        if restart {
+            requestPermissionAndStart()
+        }
+    }
+
     func refreshInputDevices() {
         do {
             inputDevices =
                 try catalog
                     .inputDevices()
-
-            if let selectedDeviceUID,
-               !inputDevices
-                .contains(
-                    where: {
-                        $0.uid ==
-                            selectedDeviceUID
-                    }
-                ) {
-                self.selectedDeviceUID =
-                    nil
-            }
 
             updateIdleDeviceMetadata()
         } catch {
@@ -688,7 +718,9 @@ final class AudioInputModel:
             sampleRate = 0
             hardwareInputLatencyMs = 0
             inputLabel =
-                "No Audio Input"
+                selectedDeviceUID == nil
+                ? "No Audio Input"
+                : "Selected Input Disconnected"
         }
     }
 
