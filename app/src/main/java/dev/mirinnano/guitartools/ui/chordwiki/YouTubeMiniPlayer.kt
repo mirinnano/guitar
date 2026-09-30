@@ -9,10 +9,13 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
 class YouTubePlayerController {
@@ -100,23 +103,34 @@ fun YouTubeMiniPlayer(
         ) -> Unit,
     onUnavailable: () -> Unit
 ) {
+    val latestProgress =
+        rememberUpdatedState(onProgress)
+    val latestUnavailable =
+        rememberUpdatedState(onUnavailable)
+
     val bridge =
-        remember(
-            videoId,
-            onProgress,
-            onUnavailable
-        ) {
+        remember(videoId) {
             YouTubeBridge(
-                onProgress =
-                    onProgress,
-                onUnavailable =
-                    onUnavailable
+                onProgress = {
+                        positionMs,
+                        durationMs,
+                        playing ->
+                    latestProgress.value(
+                        positionMs,
+                        durationMs,
+                        playing
+                    )
+                },
+                onUnavailable = {
+                    latestUnavailable.value()
+                }
             )
         }
 
     AndroidView(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 200.dp)
             .aspectRatio(16f / 9f),
         factory = { context ->
             WebView(context).apply {
@@ -187,7 +201,7 @@ fun YouTubeMiniPlayer(
         }
     )
 
-    DisposableEffect(controller) {
+    DisposableEffect(controller, videoId) {
         onDispose {
             controller.release()
         }
