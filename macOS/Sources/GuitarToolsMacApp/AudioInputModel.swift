@@ -46,11 +46,24 @@ final class AudioInputModel:
     var onStableChord:
         ((String, Double) -> Void)?
 
+    typealias PCMFrameHandler =
+        (
+            _ samples: [Float],
+            _ sampleRate: Double,
+            _ timestampSeconds: Double
+        ) -> Void
+
     private let engine =
         AVAudioEngine()
 
     private let pipeline =
         LiveChordAnalysisPipeline()
+
+    private let handlerLock =
+        NSLock()
+
+    private var pcmHandlers:
+        [UUID: PCMFrameHandler] = [:]
 
     private var tapInstalled = false
 
@@ -88,6 +101,27 @@ final class AudioInputModel:
 
             self?.onOnset?(onset)
         }
+    }
+
+    func addPCMFrameHandler(
+        _ handler:
+            @escaping PCMFrameHandler
+    ) -> UUID {
+        let id = UUID()
+
+        handlerLock.lock()
+        pcmHandlers[id] = handler
+        handlerLock.unlock()
+
+        return id
+    }
+
+    func removePCMFrameHandler(
+        _ id: UUID
+    ) {
+        handlerLock.lock()
+        pcmHandlers[id] = nil
+        handlerLock.unlock()
     }
 
     func toggle() {
@@ -269,6 +303,22 @@ final class AudioInputModel:
                             .systemUptime -
                         Double(frameCount) /
                         format.sampleRate
+                }
+
+                self.handlerLock.lock()
+                let handlers =
+                    Array(
+                        self.pcmHandlers
+                            .values
+                    )
+                self.handlerLock.unlock()
+
+                for handler in handlers {
+                    handler(
+                        samples,
+                        format.sampleRate,
+                        startTime
+                    )
                 }
 
                 self.pipeline.ingest(
