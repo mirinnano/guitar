@@ -105,6 +105,13 @@
     <string name="chordwiki_chart">コード譜</string>
     <string name="chordwiki_shape_unavailable">押さえ方未登録</string>
     <string name="back">戻る</string>
+    <string name="chordwiki_youtube">YouTube</string>
+    <string name="chordwiki_sync">同期</string>
+    <string name="chordwiki_youtube_sync_hint">動画の再生位置を譜面タイムラインへ同期します。</string>
+    <string name="chordwiki_metronome">メトロノーム</string>
+    <string name="chordwiki_offset">開始 %+1$.1f秒</string>
+    <string name="chordwiki_bar">%1$d小節目</string>
+    <string name="chordwiki_timing_note">小節線がある譜面は小節単位、ない行は1行=1小節としてコード位置を推定します。BPMと開始オフセットで同期を微調整できます。</string>
 
     <string name="highlight_note">強調する音</string>
     <string name="fretboard_footer">0〜12フレット · Standard tuning</string>

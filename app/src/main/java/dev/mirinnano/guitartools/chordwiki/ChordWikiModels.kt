@@ -25,6 +25,9 @@ data class ChordWikiSong(
     val artist: String = "",
     val key: String? = null,
     val bpm: Int? = null,
+    val beatsPerBar: Int? = null,
+    val beatUnit: Int? = null,
+    val youtubeVideoId: String? = null,
     val lines: List<ChordWikiLine>,
     val sourceUrl: String
 ) {
