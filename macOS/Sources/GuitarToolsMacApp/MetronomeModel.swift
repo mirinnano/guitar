@@ -148,6 +148,7 @@ final class MacMetronomeEngine {
     }
 
     func start(
+        startingBeat: Int = 0,
         configProvider:
             @escaping () ->
             MacMetronomeConfig,
@@ -168,7 +169,15 @@ final class MacMetronomeEngine {
             configProvider()
 
         running = true
-        beatInBar = 0
+        beatInBar =
+            max(
+                startingBeat,
+                0
+            ) %
+            max(
+                initial.beatsPerBar,
+                1
+            )
         subdivisionIndex = 0
         countInPulses =
             initial.countInBars *
