@@ -473,13 +473,11 @@ actor SongMetadataClient {
         }
 
         if let value =
-            value as? String {
+            value as? String,
+           let number =
+            Double(value) {
             return Int(
-                Double(value)
-                    .map {
-                        $0.rounded()
-                    }
-                ?? .nan
+                number.rounded()
             )
         }
 
