@@ -1,3 +1,4 @@
+import AppKit
 import GuitarToolsCore
 import SwiftUI
 
@@ -14,6 +15,10 @@ struct TunerView:
     @State
     private var tonePlayer =
         ReferenceTonePlayer()
+
+    @State
+    private var wasInTune =
+        false
 
     init(
         audio: AudioInputModel
@@ -318,6 +323,42 @@ struct TunerView:
             Section(
                 "Reference"
             ) {
+                HStack(
+                    spacing: 8
+                ) {
+                    Text("Quick A4")
+                        .foregroundStyle(
+                            .secondary
+                        )
+
+                    ForEach(
+                        [432.0, 440.0, 442.0],
+                        id: \.self
+                    ) {
+                        value in
+
+                        Button(
+                            "\(Int(value)) Hz"
+                        ) {
+                            model.a4Hz =
+                                value
+                        }
+                        .buttonStyle(
+                            .bordered
+                        )
+                        .tint(
+                            abs(
+                                model.a4Hz -
+                                value
+                            ) < 0.05
+                            ? Color
+                                .accentColor
+                            : Color
+                                .secondary
+                        )
+                    }
+                }
+
                 LabeledContent(
                     "A4"
                 ) {
@@ -398,16 +439,41 @@ struct TunerView:
         .onChange(
             of: model.a4Hz
         ) {
+            _,
             _ in
-            if let reading =
-                model.reading {
-                _ = reading
-                model
-                    .setLockedString(
-                        model
-                            .lockedStringNumber
+
+            model
+                .setLockedString(
+                    model
+                        .lockedStringNumber
+                )
+        }
+        .onChange(
+            of:
+                model.target?
+                    .centsFromTarget
+        ) {
+            _,
+            value in
+
+            let nowInTune =
+                abs(
+                    value ?? 100
+                ) <= 5
+
+            if nowInTune &&
+                !wasInTune {
+                NSHapticFeedbackManager
+                    .defaultPerformer
+                    .perform(
+                        .alignment,
+                        performanceTime:
+                            .now
                     )
             }
+
+            wasInTune =
+                nowInTune
         }
     }
 
