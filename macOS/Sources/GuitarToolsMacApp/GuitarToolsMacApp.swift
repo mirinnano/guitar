@@ -1,7 +1,21 @@
+import Darwin
 import SwiftUI
 
 @main
 struct GuitarToolsMacApp: App {
+
+    init() {
+        if CommandLine
+            .arguments
+            .contains(
+                "--smoke-test"
+            ) {
+            print(
+                "Guitar Tools macOS smoke test OK"
+            )
+            exit(EXIT_SUCCESS)
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
