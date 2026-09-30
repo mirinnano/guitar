@@ -113,10 +113,11 @@ struct ChordsView:
                         selectedRoot =
                             nil
                     }
-                    .buttonStyle(
+                    .buttonStyle(.bordered)
+                    .tint(
                         selectedRoot == nil
-                        ? .borderedProminent
-                        : .bordered
+                        ? Color.accentColor
+                        : Color.secondary
                     )
 
                     ForEach(
@@ -131,11 +132,12 @@ struct ChordsView:
                             selectedRoot =
                                 note
                         }
-                        .buttonStyle(
+                        .buttonStyle(.bordered)
+                        .tint(
                             selectedRoot ==
                             note
-                            ? .borderedProminent
-                            : .bordered
+                            ? Color.accentColor
+                            : Color.secondary
                         )
                     }
                 }
@@ -151,11 +153,12 @@ struct ChordsView:
                         selectedQuality =
                             nil
                     }
-                    .buttonStyle(
+                    .buttonStyle(.bordered)
+                    .tint(
                         selectedQuality ==
                         nil
-                        ? .borderedProminent
-                        : .bordered
+                        ? Color.accentColor
+                        : Color.secondary
                     )
 
                     ForEach(
@@ -171,11 +174,12 @@ struct ChordsView:
                             selectedQuality =
                                 quality
                         }
-                        .buttonStyle(
+                        .buttonStyle(.bordered)
+                        .tint(
                             selectedQuality ==
                             quality
-                            ? .borderedProminent
-                            : .bordered
+                            ? Color.accentColor
+                            : Color.secondary
                         )
                     }
                 }
