@@ -330,6 +330,39 @@ final class ChordWikiViewerModel:
         }
     }
 
+    func videoPosition(
+        forBeat beat: Double
+    ) -> Int64 {
+        syncMap?
+            .videoPositionMs(
+                forBeat: beat
+            )
+        ?? 0
+    }
+
+    func setYouTubeOffset(
+        _ value: Int64
+    ) {
+        youtubeOffsetMs =
+            min(
+                max(
+                    value,
+                    -30_000
+                ),
+                120_000
+            )
+
+        if youtubeSyncEnabled {
+            currentBeat =
+                syncMap?
+                    .beat(
+                        forVideoPositionMs:
+                            estimatedYouTubePosition()
+                    )
+                ?? currentBeat
+        }
+    }
+
     func setYouTubeSync(
         _ enabled: Bool
     ) {
