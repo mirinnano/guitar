@@ -143,11 +143,20 @@ struct ContentView: View {
             .balanced
         )
         .onAppear {
-            audio.selectedChannel =
+            audio.selectInputDevice(
+                uid:
+                    preferences
+                        .value
+                        .audio
+                        .inputDeviceUID
+            )
+
+            audio.selectInputChannel(
                 preferences
                     .value
                     .audio
                     .selectedChannel
+            )
         }
         .onChange(
             of:
@@ -161,6 +170,20 @@ struct ContentView: View {
                 value.audio
                     .selectedChannel =
                     channel
+            }
+        }
+        .onChange(
+            of:
+                audio.selectedDeviceUID
+        ) {
+            uid in
+
+            preferences.update {
+                value in
+
+                value.audio
+                    .inputDeviceUID =
+                    uid
             }
         }
         .onReceive(
@@ -270,7 +293,7 @@ struct ContentView: View {
                     Text(
                         audio.isRunning
                         ? audio.inputLabel
-                        : "クリックして入力を開始"
+                        : audio.inputLabel
                     )
                     .font(.caption)
                     .foregroundStyle(
