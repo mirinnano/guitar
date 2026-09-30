@@ -105,17 +105,15 @@ macOS版は **SwiftUI** で開発し、Android版の延長線に置きます。
 
 ### macOS 実装済み
 
-- SwiftUI `NavigationSplitView` ベースのネイティブMacアプリ
-- `AVAudioEngine` でmacOS既定入力（オーディオIFを想定）を取得
-- 入力チャンネル選択、レベル / クリップ表示
-- 12音クロマ解析からリアルタイムコード判定
-- Major / minor / 5 / 7 / maj7 / m7 / dim / aug / sus2 / sus4
-- 複数フレーム多数決による表示安定化
-- macOS CIで `swift test` / `swift build` / `.app` パッケージ / ad-hoc署名 / Artifact生成
-- ChordWiki検索・ネイティブ譜面表示をMac版に追加
-- オーディオIFのオンセット時刻と譜面上の期待コード開始時刻を比較し、早い/遅いをms単位で表示
-- オンセット直後のクロマ解析で期待コードと実演奏コードを照合し、コード正誤とタイミング精度を別々に評価
-- 入力遅延補正、On Time許容幅、セッション正答率・平均タイミング誤差をInspectorに表示
+Android版の現行ユーザー機能をSwiftUIへ移植済みです。
+
+- **Metronome**: 30–300 BPM、1–12拍子、4分/8分/3連/16分、Accent/Normal/Mute、Digital/Wood/Hi-Hat、count-in、Tap Tempo、Speed Trainer
+- **Tuner**: YIN pitch detection、Standard / Drop D / Drop C# / Drop C / E♭ Standard / D Standard / Open G / DADGAD / Custom、A4 400–480 Hz、感度、弦ロック、基準音
+- **Chords**: 12 root × 16 quality = 192コード、検索、押さえ方図
+- **ChordWiki**: 検索、ネイティブ譜面表示、押さえ方、BPM自動スクロール、現在コード、小節表示、YouTube小窓、アンカー同期、piecewise time-warp、同期メトロノーム、アンカー永続化
+- **Fretboard**: Note / Scale / Chord、Major / Minor / Pentatonic / Blues / Dorian / Mixolydian、interval表示、各種tuning、12–24 frets、左利き
+- **Practice**: コード進行編集、各step拍数、ChordPro import、MusicBrainz曲検索、ローカルbacking track、再生位置同期、offset
+- **Mac extension**: オーディオIF入力、リアルタイムコード判定、オンセット時刻、期待コード比較、早い/遅いms評価、セッション統計
 
 Mac版は録音・ミキサー・アンプシム等を持たず、オーディオ入力を練習解析へ使います。
 

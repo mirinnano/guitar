@@ -5,8 +5,20 @@ enum MacTool:
     CaseIterable,
     Identifiable {
 
+    case metronome =
+        "メトロノーム"
+    case tuner =
+        "チューナー"
+    case chords =
+        "コード"
+    case charts =
+        "譜面"
+    case fretboard =
+        "指板"
     case practice =
-        "譜面練習"
+        "練習"
+    case chordFollow =
+        "演奏判定"
     case chordDetection =
         "コード判定"
     case roadmap =
@@ -18,12 +30,24 @@ enum MacTool:
 
     var systemImage: String {
         switch self {
-        case .practice:
+        case .metronome:
+            "metronome"
+        case .tuner:
+            "tuningfork"
+        case .chords:
+            "guitars"
+        case .charts:
             "music.note.list"
+        case .fretboard:
+            "rectangle.grid.1x2"
+        case .practice:
+            "repeat"
+        case .chordFollow:
+            "scope"
         case .chordDetection:
             "waveform.badge.magnifyingglass"
         case .roadmap:
-            "guitars"
+            "swift"
         }
     }
 }
@@ -37,7 +61,7 @@ struct ContentView: View {
     @State
     private var selection:
         MacTool? =
-        .practice
+        .metronome
 
     var body: some View {
         NavigationSplitView {
@@ -45,16 +69,34 @@ struct ContentView: View {
                 selection: $selection
             ) {
                 Section(
-                    "Practice"
+                    "Guitar Tools"
                 ) {
+                    navigationItem(
+                        .metronome
+                    )
+                    navigationItem(
+                        .tuner
+                    )
+                    navigationItem(
+                        .chords
+                    )
+                    navigationItem(
+                        .charts
+                    )
+                    navigationItem(
+                        .fretboard
+                    )
                     navigationItem(
                         .practice
                     )
                 }
 
                 Section(
-                    "Utilities"
+                    "Audio Interface"
                 ) {
+                    navigationItem(
+                        .chordFollow
+                    )
                     navigationItem(
                         .chordDetection
                     )
@@ -78,7 +120,27 @@ struct ContentView: View {
             )
         } detail: {
             switch selection {
+            case .metronome:
+                MetronomeView()
+
+            case .tuner:
+                TunerView(
+                    audio: audio
+                )
+
+            case .chords:
+                ChordsView()
+
+            case .charts:
+                ChordWikiViewerView()
+
+            case .fretboard:
+                FretboardView()
+
             case .practice:
+                ProgressionPracticeView()
+
+            case .chordFollow:
                 ChordFollowPracticeView(
                     audio: audio
                 )
@@ -109,7 +171,9 @@ struct ContentView: View {
                     for:
                         .toggleAudioInput
                 )
-        ) { _ in
+        ) {
+            _ in
+
             audio.toggle()
         }
     }
@@ -147,8 +211,42 @@ private struct MacRoadmapView:
                 )
 
                 Text(
-                    "Android版の延長線として、譜面・同期・メトロノーム・チューナー・練習支援をSwiftUIで実装します。Macではオーディオインターフェース入力を使い、演奏内容とタイミングの解析を強化します。"
+                    "Android版の機能をSwiftUIへ移植し、Macではオーディオインターフェース入力を使った演奏解析を追加しています。"
                 )
+
+                GroupBox(
+                    "Android parity"
+                ) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: 8
+                    ) {
+                        Label(
+                            "Metronome / Tuner / Chords / ChordWiki / Fretboard / Practice",
+                            systemImage:
+                                "checkmark.circle"
+                        )
+
+                        Label(
+                            "ChordWiki高精度同期・YouTube・自動スクロール",
+                            systemImage:
+                                "checkmark.circle"
+                        )
+
+                        Label(
+                            "Audio Interfaceコード判定・演奏タイミング評価",
+                            systemImage:
+                                "checkmark.circle"
+                        )
+                    }
+                    .frame(
+                        maxWidth:
+                            .infinity,
+                        alignment:
+                            .leading
+                    )
+                    .padding(4)
+                }
 
                 GroupBox(
                     "方針"
@@ -176,8 +274,10 @@ private struct MacRoadmapView:
                         )
                     }
                     .frame(
-                        maxWidth: .infinity,
-                        alignment: .leading
+                        maxWidth:
+                            .infinity,
+                        alignment:
+                            .leading
                     )
                     .padding(4)
                 }
