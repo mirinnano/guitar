@@ -7,230 +7,381 @@ struct MetronomeView:
     private var model =
         MetronomeModel()
 
+    private let settingsColumns = [
+        GridItem(
+            .adaptive(
+                minimum: 320,
+                maximum: 520
+            ),
+            spacing: 16
+        )
+    ]
+
     var body: some View {
-        Form {
-            Section(
-                "Tempo"
+        ScrollView {
+            VStack(
+                alignment: .leading,
+                spacing: 20
             ) {
-                HStack(
-                    alignment: .center,
-                    spacing: 22
+                MacPageHeader(
+                    "メトロノーム",
+                    subtitle:
+                        "テンポ、拍子、アクセントを一画面で調整します。"
                 ) {
-                    Button {
-                        model.changeBpm(-1)
-                    } label: {
-                        Image(
-                            systemName:
-                                "minus"
+                    if model.isCountIn {
+                        MacStatusPill(
+                            text: "Count-in",
+                            systemImage:
+                                "hourglass",
+                            role: .neutral
+                        )
+                    } else if model.isPlaying {
+                        MacStatusPill(
+                            text: "Playing",
+                            systemImage:
+                                "play.fill",
+                            role: .success
                         )
                     }
+                }
 
+                tempoHero
+
+                LazyVGrid(
+                    columns:
+                        settingsColumns,
+                    alignment: .leading,
+                    spacing: 16
+                ) {
+                    rhythmSection
+                    clickSection
+                    speedTrainerSection
+                }
+            }
+            .padding(26)
+            .macPageWidth(1_100)
+        }
+        .navigationTitle(
+            "メトロノーム"
+        )
+        .toolbar {
+            ToolbarItemGroup(
+                placement:
+                    .primaryAction
+            ) {
+                Button(
+                    "Tap"
+                ) {
+                    model.registerTap()
+                }
+                .keyboardShortcut(
+                    "t",
+                    modifiers: []
+                )
+                .help(
+                    "Tap Tempo"
+                )
+
+                Button {
+                    model.toggle()
+                } label: {
+                    Label(
+                        model.isPlaying
+                        ? "停止"
+                        : "開始",
+                        systemImage:
+                            model.isPlaying
+                            ? "stop.fill"
+                            : "play.fill"
+                    )
+                }
+                .help(
+                    model.isPlaying
+                    ? "メトロノームを停止"
+                    : "メトロノームを開始"
+                )
+            }
+        }
+        .onDisappear {
+            model.stop()
+        }
+    }
+
+    private var tempoHero:
+        some View {
+
+        VStack(
+            spacing: 18
+        ) {
+            HStack(
+                alignment: .center,
+                spacing: 18
+            ) {
+                Button {
+                    model.changeBpm(-5)
+                } label: {
+                    Image(
+                        systemName:
+                            "minus.circle"
+                    )
+                    .font(.title2)
+                }
+                .buttonStyle(.plain)
+                .help("-5 BPM")
+
+                Button {
+                    model.changeBpm(-1)
+                } label: {
+                    Image(
+                        systemName:
+                            "minus"
+                    )
+                }
+                .help("-1 BPM")
+
+                VStack(
+                    spacing: 0
+                ) {
                     Text(
                         "\(model.bpm)"
                     )
                     .font(
                         .system(
-                            size: 64,
+                            size: 76,
                             weight: .semibold,
-                            design:
-                                .rounded
+                            design: .rounded
                         )
                     )
                     .monospacedDigit()
+                    .contentTransition(
+                        .numericText()
+                    )
 
                     Text("BPM")
+                        .font(
+                            .callout
+                                .weight(.medium)
+                        )
                         .foregroundStyle(
                             .secondary
                         )
+                }
+                .frame(
+                    minWidth: 180
+                )
 
-                    Button {
-                        model.changeBpm(1)
-                    } label: {
-                        Image(
-                            systemName:
-                                "plus"
-                        )
-                    }
-
-                    Spacer()
-
-                    Button(
-                        "Tap"
-                    ) {
-                        model.registerTap()
-                    }
-                    .keyboardShortcut(
-                        "t",
-                        modifiers: []
-                    )
-
-                    Button {
-                        model.toggle()
-                    } label: {
-                        Label(
-                            model.isPlaying
-                            ? "停止"
-                            : "開始",
-                            systemImage:
-                                model.isPlaying
-                                ? "stop.fill"
-                                : "play.fill"
-                        )
-                    }
-                    .buttonStyle(
-                        .borderedProminent
+                Button {
+                    model.changeBpm(1)
+                } label: {
+                    Image(
+                        systemName:
+                            "plus"
                     )
                 }
+                .help("+1 BPM")
 
-                Slider(
-                    value:
-                        Binding(
-                            get: {
-                                Double(
-                                    model.bpm
-                                )
-                            },
-                            set: {
-                                model.bpm =
-                                    Int($0)
-                            }
-                        ),
-                    in: 30...300,
-                    step: 1
-                )
+                Button {
+                    model.changeBpm(5)
+                } label: {
+                    Image(
+                        systemName:
+                            "plus.circle"
+                    )
+                    .font(.title2)
+                }
+                .buttonStyle(.plain)
+                .help("+5 BPM")
             }
 
-            Section(
-                "拍子"
-            ) {
-                HStack {
-                    Stepper(
-                        "\(model.beatsPerBar)",
-                        value:
-                            Binding(
-                                get: {
-                                    model
-                                        .beatsPerBar
-                                },
-                                set: {
-                                    model
-                                        .setTimeSignature(
-                                            beats: $0,
-                                            unit:
-                                                model
-                                                    .beatUnit
-                                        )
-                                }
-                            ),
-                        in: 1...12
-                    )
+            Slider(
+                value:
+                    Binding(
+                        get: {
+                            Double(
+                                model.bpm
+                            )
+                        },
+                        set: {
+                            model.bpm =
+                                Int($0)
+                        }
+                    ),
+                in: 30...300,
+                step: 1
+            )
+            .frame(
+                maxWidth: 620
+            )
 
-                    Picker(
-                        "Beat Unit",
-                        selection:
-                            Binding(
-                                get: {
-                                    model.beatUnit
-                                },
-                                set: {
-                                    model
-                                        .setTimeSignature(
-                                            beats:
-                                                model
-                                                    .beatsPerBar,
-                                            unit: $0
-                                        )
-                                }
+            beatIndicator
+        }
+        .frame(
+            maxWidth: .infinity
+        )
+        .padding(
+            .vertical,
+            26
+        )
+        .padding(
+            .horizontal,
+            30
+        )
+        .background(
+            .quaternary.opacity(0.18),
+            in:
+                RoundedRectangle(
+                    cornerRadius: 16,
+                    style: .continuous
+                )
+        )
+    }
+
+    private var beatIndicator:
+        some View {
+
+        HStack(
+            spacing: 10
+        ) {
+            ForEach(
+                0..<model.beatsPerBar,
+                id: \.self
+            ) {
+                index in
+
+                let active =
+                    model.currentBeat ==
+                    index &&
+                    model.isPlaying
+
+                Circle()
+                    .fill(
+                        active
+                        ? Color.accentColor
+                        : Color.secondary
+                            .opacity(0.18)
+                    )
+                    .overlay {
+                        if model
+                            .accents[
+                                index
+                            ] ==
+                            .mute {
+                            Image(
+                                systemName:
+                                    "xmark"
                             )
-                    ) {
-                        ForEach(
-                            [2, 4, 8, 16],
-                            id: \.self
-                        ) {
-                            Text(
-                                "/\($0)"
+                            .font(.caption2)
+                            .foregroundStyle(
+                                active
+                                ? Color.white
+                                : Color.secondary
                             )
-                            .tag($0)
                         }
                     }
                     .frame(
-                        width: 120
+                        width:
+                            index == 0
+                            ? 22
+                            : 18,
+                        height:
+                            index == 0
+                            ? 22
+                            : 18
                     )
-                }
+                    .animation(
+                        .easeOut(
+                            duration: 0.08
+                        ),
+                        value: active
+                    )
+            }
+        }
+        .frame(
+            minHeight: 24
+        )
+    }
 
-                HStack(
-                    spacing: 8
-                ) {
-                    ForEach(
-                        0..<model
-                            .beatsPerBar,
-                        id: \.self
+    private var rhythmSection:
+        some View {
+
+        MacSection(
+            "リズム",
+            subtitle:
+                "拍子・サブディビジョン・拍ごとのアクセント"
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: 14
+            ) {
+                HStack {
+                    LabeledContent(
+                        "拍子"
                     ) {
-                        index in
-
-                        Button {
-                            model
-                                .cycleAccent(
-                                    index
-                                )
-                        } label: {
-                            VStack {
-                                Text(
-                                    model
-                                        .accents[
-                                            index
-                                        ]
-                                        .symbol
-                                )
-                                .font(
-                                    .title2
-                                )
-
-                                Text(
-                                    "\(index + 1)"
-                                )
-                                .font(
-                                    .caption
-                                )
-                            }
-                            .frame(
-                                minWidth: 38
+                        HStack(
+                            spacing: 6
+                        ) {
+                            Stepper(
+                                "\(model.beatsPerBar)",
+                                value:
+                                    Binding(
+                                        get: {
+                                            model
+                                                .beatsPerBar
+                                        },
+                                        set: {
+                                            model
+                                                .setTimeSignature(
+                                                    beats: $0,
+                                                    unit:
+                                                        model
+                                                            .beatUnit
+                                                )
+                                        }
+                                    ),
+                                in: 1...12
                             )
-                            .foregroundStyle(
-                                model
-                                    .currentBeat ==
-                                index
-                                ? Color
-                                    .accentColor
-                                : Color.primary
+
+                            Picker(
+                                "",
+                                selection:
+                                    Binding(
+                                        get: {
+                                            model
+                                                .beatUnit
+                                        },
+                                        set: {
+                                            model
+                                                .setTimeSignature(
+                                                    beats:
+                                                        model
+                                                            .beatsPerBar,
+                                                    unit: $0
+                                                )
+                                        }
+                                    )
+                            ) {
+                                ForEach(
+                                    [2, 4, 8, 16],
+                                    id: \.self
+                                ) {
+                                    Text(
+                                        "/\($0)"
+                                    )
+                                    .tag($0)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(
+                                width: 78
                             )
                         }
-                        .buttonStyle(
-                            .borderless
-                        )
                     }
                 }
 
-                if model.isCountIn {
-                    Label(
-                        "Count-in",
-                        systemImage:
-                            "hourglass"
-                    )
-                    .foregroundStyle(
-                        .secondary
-                    )
-                }
-            }
-
-            Section(
-                "Subdivision"
-            ) {
                 Picker(
                     "Subdivision",
                     selection:
-                        $model
-                            .subdivision
+                        $model.subdivision
                 ) {
                     ForEach(
                         MacMetronomeSubdivision
@@ -240,19 +391,93 @@ struct MetronomeView:
                             .tag($0)
                     }
                 }
-                .pickerStyle(
-                    .segmented
-                )
-            }
+                .pickerStyle(.segmented)
 
-            Section(
-                "Click"
+                VStack(
+                    alignment: .leading,
+                    spacing: 7
+                ) {
+                    Text(
+                        "アクセント"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(
+                        .secondary
+                    )
+
+                    HStack(
+                        spacing: 7
+                    ) {
+                        ForEach(
+                            0..<model
+                                .beatsPerBar,
+                            id: \.self
+                        ) {
+                            index in
+
+                            Button {
+                                model
+                                    .cycleAccent(
+                                        index
+                                    )
+                            } label: {
+                                VStack(
+                                    spacing: 2
+                                ) {
+                                    Text(
+                                        model
+                                            .accents[
+                                                index
+                                            ]
+                                            .symbol
+                                    )
+                                    .font(
+                                        .headline
+                                    )
+
+                                    Text(
+                                        "\(index + 1)"
+                                    )
+                                    .font(.caption2)
+                                }
+                                .frame(
+                                    minWidth: 34
+                                )
+                            }
+                            .buttonStyle(
+                                .bordered
+                            )
+                            .tint(
+                                model
+                                    .currentBeat ==
+                                index &&
+                                model.isPlaying
+                                ? Color.accentColor
+                                : Color.secondary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var clickSection:
+        some View {
+
+        MacSection(
+            "クリック",
+            subtitle:
+                "音色とカウントイン"
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: 14
             ) {
                 Picker(
                     "Sound",
                     selection:
-                        $model
-                            .clickSound
+                        $model.clickSound
                 ) {
                     ForEach(
                         MacClickSound
@@ -266,14 +491,34 @@ struct MetronomeView:
                 Stepper(
                     "Count-in: \(model.countInBars) bars",
                     value:
-                        $model
-                            .countInBars,
+                        $model.countInBars,
                     in: 0...4
                 )
-            }
 
-            Section(
-                "Speed Trainer"
+                MacMetric(
+                    "Current meter",
+                    value:
+                        "\(model.beatsPerBar)/\(model.beatUnit)",
+                    detail:
+                        model.subdivision.label,
+                    systemImage:
+                        "music.note"
+                )
+            }
+        }
+    }
+
+    private var speedTrainerSection:
+        some View {
+
+        MacSection(
+            "Speed Trainer",
+            subtitle:
+                "一定小節ごとにテンポを上げる反復練習"
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: 12
             ) {
                 Toggle(
                     "Speed Trainer",
@@ -282,61 +527,87 @@ struct MetronomeView:
                             .speedTrainerEnabled
                 )
 
-                LabeledContent(
-                    "Start"
+                Grid(
+                    alignment: .leading,
+                    horizontalSpacing: 16,
+                    verticalSpacing: 9
                 ) {
-                    Stepper(
-                        "\(model.speedStartBpm) BPM",
+                    trainerRow(
+                        "Start",
                         value:
                             $model
                                 .speedStartBpm,
-                        in: 30...300
+                        suffix: "BPM",
+                        range: 30...300
                     )
-                }
 
-                LabeledContent(
-                    "End"
-                ) {
-                    Stepper(
-                        "\(model.speedEndBpm) BPM",
+                    trainerRow(
+                        "End",
                         value:
                             $model
                                 .speedEndBpm,
-                        in: 30...300
+                        suffix: "BPM",
+                        range: 30...300
                     )
-                }
 
-                LabeledContent(
-                    "Step"
-                ) {
-                    Stepper(
-                        "+\(model.speedStepBpm) BPM",
+                    trainerRow(
+                        "Step",
                         value:
                             $model
                                 .speedStepBpm,
-                        in: 1...20
+                        suffix: "BPM",
+                        range: 1...20
                     )
-                }
 
-                LabeledContent(
-                    "Every"
-                ) {
-                    Stepper(
-                        "\(model.speedBarsPerStep) bars",
+                    trainerRow(
+                        "Every",
                         value:
                             $model
                                 .speedBarsPerStep,
-                        in: 1...16
+                        suffix: "bars",
+                        range: 1...16
+                    )
+                }
+                .disabled(
+                    !model
+                        .speedTrainerEnabled
+                )
+
+                if model
+                    .speedTrainerEnabled {
+                    MacMetric(
+                        "Progress",
+                        value:
+                            "\(model.speedCompletedBars) / \(model.speedBarsPerStep)",
+                        detail:
+                            "次のテンポアップまで",
+                        systemImage:
+                            "chart.line.uptrend.xyaxis"
                     )
                 }
             }
         }
-        .formStyle(.grouped)
-        .navigationTitle(
-            "メトロノーム"
-        )
-        .onDisappear {
-            model.stop()
+    }
+
+    private func trainerRow(
+        _ title: String,
+        value: Binding<Int>,
+        suffix: String,
+        range:
+            ClosedRange<Int>
+    ) -> some View {
+
+        GridRow {
+            Text(title)
+                .foregroundStyle(
+                    .secondary
+                )
+
+            Stepper(
+                "\(value.wrappedValue) \(suffix)",
+                value: value,
+                in: range
+            )
         }
     }
 }
