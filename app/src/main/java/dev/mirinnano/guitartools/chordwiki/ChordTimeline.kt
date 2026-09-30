@@ -44,8 +44,7 @@ data class ChordTimeline(
                 clamped >= it.startBeat
             }
             ?.takeIf {
-                clamped < it.endBeat ||
-                    it == events.last()
+                clamped < it.endBeat
             }
     }
 
