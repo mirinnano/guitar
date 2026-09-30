@@ -1,5 +1,7 @@
+import AudioToolbox
 import AVFoundation
 import Combine
+import CoreAudio
 import Foundation
 import GuitarToolsCore
 
@@ -10,8 +12,16 @@ final class AudioInputModel:
     var isRunning = false
 
     @Published private(set)
+    var inputDevices:
+        [CoreAudioInputDevice] = []
+
+    @Published private(set)
+    var selectedDeviceUID:
+        String?
+
+    @Published private(set)
     var inputLabel =
-        "macOS Default Input"
+        "System Default Input"
 
     @Published private(set)
     var sampleRate = 0.0
@@ -23,19 +33,26 @@ final class AudioInputModel:
     var selectedChannel = 0
 
     @Published private(set)
+    var hardwareInputLatencyMs =
+        0.0
+
+    @Published private(set)
     var levelDBFS = -120.0
 
     @Published private(set)
     var clipping = false
 
     @Published private(set)
-    var estimate: ChordEstimate?
+    var estimate:
+        ChordEstimate?
 
     @Published private(set)
-    var stableChord: String?
+    var stableChord:
+        String?
 
     @Published private(set)
-    var errorMessage: String?
+    var errorMessage:
+        String?
 
     @Published private(set)
     var permissionDenied = false
@@ -45,6 +62,20 @@ final class AudioInputModel:
 
     var onStableChord:
         ((String, Double) -> Void)?
+
+    var selectedDevice:
+        CoreAudioInputDevice? {
+        guard let selectedDeviceUID
+        else {
+            return nil
+        }
+
+        return inputDevices
+            .first {
+                $0.uid ==
+                    selectedDeviceUID
+            }
+    }
 
     typealias PCMFrameHandler =
         (
@@ -62,6 +93,9 @@ final class AudioInputModel:
     private let clock:
         any AudioHostClock
 
+    private let catalog:
+        CoreAudioDeviceCatalog
+
     private let handlerLock =
         NSLock()
 
@@ -70,12 +104,19 @@ final class AudioInputModel:
 
     private var tapInstalled = false
 
+    private var activeDeviceID:
+        AudioDeviceID?
+
     init(
         clock:
             any AudioHostClock =
-            SystemAudioHostClock()
+            SystemAudioHostClock(),
+        catalog:
+            CoreAudioDeviceCatalog =
+            CoreAudioDeviceCatalog()
     ) {
         self.clock = clock
+        self.catalog = catalog
 
         pipeline.onResult = {
             [weak self]
@@ -110,6 +151,15 @@ final class AudioInputModel:
 
             self?.onOnset?(onset)
         }
+
+        catalog.onDevicesChanged = {
+            [weak self] in
+
+            self?
+                .handleDeviceTopologyChange()
+        }
+
+        refreshInputDevices()
     }
 
     func addPCMFrameHandler(
@@ -131,6 +181,82 @@ final class AudioInputModel:
         handlerLock.lock()
         pcmHandlers[id] = nil
         handlerLock.unlock()
+    }
+
+    func selectInputDevice(
+        uid: String?
+    ) {
+        let normalized =
+            uid?
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+
+        let next =
+            normalized?
+                .isEmpty == true
+            ? nil
+            : normalized
+
+        guard next !=
+            selectedDeviceUID
+        else {
+            return
+        }
+
+        let restart =
+            isRunning
+
+        if restart {
+            stop()
+        }
+
+        selectedDeviceUID =
+            next
+
+        if let selectedDevice,
+           selectedChannel >=
+            selectedDevice.channelCount {
+            selectedChannel =
+                max(
+                    selectedDevice
+                        .channelCount - 1,
+                    0
+                )
+        }
+
+        updateIdleDeviceMetadata()
+
+        if restart {
+            requestPermissionAndStart()
+        }
+    }
+
+    func refreshInputDevices() {
+        do {
+            inputDevices =
+                try catalog
+                    .inputDevices()
+
+            if let selectedDeviceUID,
+               !inputDevices
+                .contains(
+                    where: {
+                        $0.uid ==
+                            selectedDeviceUID
+                    }
+                ) {
+                self.selectedDeviceUID =
+                    nil
+            }
+
+            updateIdleDeviceMetadata()
+        } catch {
+            inputDevices = []
+            errorMessage =
+                "オーディオデバイス一覧を取得できませんでした: \(error.localizedDescription)"
+        }
     }
 
     func toggle() {
@@ -205,10 +331,13 @@ final class AudioInputModel:
         pipeline.reset()
 
         isRunning = false
+        activeDeviceID = nil
         levelDBFS = -120
         clipping = false
         estimate = nil
         stableChord = nil
+
+        updateIdleDeviceMetadata()
     }
 
     private func startEngine() {
@@ -217,8 +346,28 @@ final class AudioInputModel:
         }
 
         do {
+            engine.stop()
+            engine.reset()
+
             let input =
                 engine.inputNode
+
+            let target =
+                try resolvedInputDevice()
+
+            if let deviceID =
+                target?.id ??
+                catalog
+                    .defaultInputDeviceID() {
+                try setCurrentDevice(
+                    deviceID,
+                    inputNode:
+                        input
+                )
+
+                activeDeviceID =
+                    deviceID
+            }
 
             let format =
                 input.outputFormat(
@@ -253,6 +402,32 @@ final class AudioInputModel:
                 channelCount
             sampleRate =
                 format.sampleRate
+
+            if let activeDeviceID,
+               let device =
+                inputDevices
+                    .first(
+                        where: {
+                            $0.id ==
+                                activeDeviceID
+                        }
+                    ) {
+                hardwareInputLatencyMs =
+                    device
+                        .estimatedInputLatencyMs
+                inputLabel =
+                    channelCount > 1
+                    ? "\(device.name) · Ch \(channel + 1)"
+                    : "\(device.name) · Mono"
+            } else {
+                hardwareInputLatencyMs =
+                    input.presentationLatency *
+                    1_000
+                inputLabel =
+                    channelCount > 1
+                    ? "System Default Input · Ch \(channel + 1)"
+                    : "System Default Input · Mono"
+            }
 
             input.installTap(
                 onBus: 0,
@@ -290,7 +465,8 @@ final class AudioInputModel:
                     Array(
                         UnsafeBufferPointer(
                             start: pointer,
-                            count: frameCount
+                            count:
+                                frameCount
                         )
                     )
 
@@ -300,24 +476,30 @@ final class AudioInputModel:
                 if when
                     .isHostTimeValid {
                     startTime =
-                        AVAudioTime
+                        self.clock
                             .seconds(
                                 forHostTime:
                                     when.hostTime
                             )
                 } else {
                     startTime =
-                        clock.nowSeconds() -
-                        Double(frameCount) /
+                        self.clock
+                            .nowSeconds() -
+                        Double(
+                            frameCount
+                        ) /
                         format.sampleRate
                 }
 
                 self.handlerLock.lock()
+
                 let handlers =
                     Array(
-                        self.pcmHandlers
+                        self
+                            .pcmHandlers
                             .values
                     )
+
                 self.handlerLock.unlock()
 
                 for handler in handlers {
@@ -342,14 +524,8 @@ final class AudioInputModel:
             engine.prepare()
             try engine.start()
 
-            permissionDenied =
-                false
+            permissionDenied = false
             isRunning = true
-
-            inputLabel =
-                channelCount > 1
-                ? "macOS Default Input · Ch \(channel + 1)"
-                : "macOS Default Input · Mono"
 
         } catch {
             if tapInstalled {
@@ -357,18 +533,169 @@ final class AudioInputModel:
                     .removeTap(
                         onBus: 0
                     )
+
                 tapInstalled = false
             }
 
             engine.stop()
             isRunning = false
+            activeDeviceID = nil
 
             errorMessage =
                 "オーディオ入力を開始できませんでした: \(error.localizedDescription)"
         }
     }
 
+    private func resolvedInputDevice()
+        throws
+        -> CoreAudioInputDevice? {
+
+        if let selectedDeviceUID {
+            guard let device =
+                inputDevices
+                    .first(
+                        where: {
+                            $0.uid ==
+                                selectedDeviceUID
+                        }
+                    )
+            else {
+                throw AudioInputError
+                    .selectedDeviceUnavailable
+            }
+
+            return device
+        }
+
+        guard let defaultID =
+            try catalog
+                .defaultInputDeviceID()
+        else {
+            return nil
+        }
+
+        return inputDevices
+            .first {
+                $0.id == defaultID
+            }
+    }
+
+    private func setCurrentDevice(
+        _ deviceID:
+            AudioDeviceID,
+        inputNode:
+            AVAudioInputNode
+    ) throws {
+        guard let audioUnit =
+            inputNode.audioUnit
+        else {
+            throw AudioInputError
+                .missingAudioUnit
+        }
+
+        var mutableDeviceID =
+            deviceID
+
+        let status =
+            AudioUnitSetProperty(
+                audioUnit,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &mutableDeviceID,
+                UInt32(
+                    MemoryLayout<
+                        AudioDeviceID
+                    >.size
+                )
+            )
+
+        guard status == noErr
+        else {
+            throw AudioInputError
+                .deviceSelectionFailed(
+                    status
+                )
+        }
+    }
+
+    private func handleDeviceTopologyChange() {
+        let restart =
+            isRunning
+
+        if restart {
+            stop()
+        }
+
+        refreshInputDevices()
+
+        if restart {
+            requestPermissionAndStart()
+        }
+    }
+
+    private func updateIdleDeviceMetadata() {
+        guard !isRunning
+        else {
+            return
+        }
+
+        let device:
+            CoreAudioInputDevice?
+
+        if let selectedDevice {
+            device = selectedDevice
+        } else if
+            let defaultID =
+                try? catalog
+                    .defaultInputDeviceID() {
+            device =
+                inputDevices
+                    .first {
+                        $0.id ==
+                            defaultID
+                    }
+        } else {
+            device = nil
+        }
+
+        if let device {
+            availableChannels =
+                device.channelCount
+            sampleRate =
+                device.sampleRate
+            hardwareInputLatencyMs =
+                device
+                    .estimatedInputLatencyMs
+
+            if selectedChannel >=
+                device.channelCount {
+                selectedChannel =
+                    max(
+                        device
+                            .channelCount -
+                        1,
+                        0
+                    )
+            }
+
+            inputLabel =
+                selectedDeviceUID == nil
+                ? "System Default · \(device.name)"
+                : device.name
+        } else {
+            availableChannels = 0
+            sampleRate = 0
+            hardwareInputLatencyMs = 0
+            inputLabel =
+                "No Audio Input"
+        }
+    }
+
     deinit {
+        catalog.onDevicesChanged =
+            nil
+
         if tapInstalled {
             engine.inputNode
                 .removeTap(
@@ -384,12 +711,28 @@ private enum AudioInputError:
     LocalizedError {
 
     case noInputChannels
+    case selectedDeviceUnavailable
+    case missingAudioUnit
+    case deviceSelectionFailed(
+        OSStatus
+    )
 
     var errorDescription:
         String? {
         switch self {
         case .noInputChannels:
             "使用可能なオーディオ入力チャンネルがありません。"
+
+        case .selectedDeviceUnavailable:
+            "選択したオーディオ入力デバイスが接続されていません。"
+
+        case .missingAudioUnit:
+            "AVAudioEngineの入力AudioUnitを取得できませんでした。"
+
+        case let .deviceSelectionFailed(
+            status
+        ):
+            "入力デバイスの切り替えに失敗しました (OSStatus \(status))。"
         }
     }
 }
