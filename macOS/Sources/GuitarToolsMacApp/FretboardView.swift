@@ -50,6 +50,10 @@ struct FretboardView:
     private var leftHanded =
         false
 
+    @State
+    private var zoom =
+        1.0
+
     var body: some View {
         VStack(
             spacing: 0
@@ -65,7 +69,45 @@ struct FretboardView:
                 ]
             ) {
                 fretboard
+                    .scaleEffect(
+                        zoom,
+                        anchor:
+                            .topLeading
+                    )
+                    .frame(
+                        width:
+                            (
+                                56 +
+                                Double(maxFret) *
+                                64
+                            ) *
+                            zoom,
+                        height:
+                            (
+                                26 +
+                                6 * 48
+                            ) *
+                            zoom,
+                        alignment:
+                            .topLeading
+                    )
                     .padding(22)
+                    .gesture(
+                        MagnifyGesture()
+                            .onChanged {
+                                value in
+
+                                zoom =
+                                    min(
+                                        max(
+                                            value
+                                                .magnification,
+                                            0.65
+                                        ),
+                                        1.8
+                                    )
+                            }
+                    )
             }
         }
         .navigationTitle(
@@ -188,6 +230,18 @@ struct FretboardView:
                 isOn:
                     $leftHanded
             )
+
+            LabeledContent(
+                "Zoom"
+            ) {
+                Slider(
+                    value: $zoom,
+                    in: 0.65...1.8
+                )
+                .frame(
+                    width: 110
+                )
+            }
 
             Spacer()
         }
