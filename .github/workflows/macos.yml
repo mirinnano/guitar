@@ -32,6 +32,8 @@ jobs:
         run: swift build --package-path macOS
 
       - name: Package app bundle
+        env:
+          GETSONGBPM_API_KEY: ${{ secrets.GETSONGBPM_API_KEY }}
         run: |
           chmod +x macOS/scripts/package-app.sh
           macOS/scripts/package-app.sh

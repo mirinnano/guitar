@@ -36,7 +36,8 @@ let package = Package(
         .testTarget(
             name: "GuitarToolsCoreTests",
             dependencies: [
-                "GuitarToolsCore"
+                "GuitarToolsCore",
+                "GuitarToolsMacApp"
             ]
         )
     ]
