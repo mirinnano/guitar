@@ -41,14 +41,10 @@ jobs:
       - name: Verify code signature
         run: codesign --verify --deep --strict "macOS/dist/Guitar Tools.app"
 
-      - name: Archive app
-        run: |
-          ditto -c -k --sequesterRsrc --keepParent             "macOS/dist/Guitar Tools.app"             "macOS/dist/GuitarToolsMac.zip"
-
       - name: Upload macOS app
         uses: actions/upload-artifact@v7
         with:
-          name: guitar-tools-macos
-          path: macOS/dist/GuitarToolsMac.zip
+          name: Guitar Tools.app
+          path: macOS/dist/Guitar Tools.app
           if-no-files-found: error
           retention-days: 14
