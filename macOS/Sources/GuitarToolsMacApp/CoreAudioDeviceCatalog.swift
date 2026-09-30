@@ -558,13 +558,12 @@ final class CoreAudioDeviceCatalog {
         }
 
         var value:
-            CFString =
-            "" as CFString
+            Unmanaged<CFString>?
 
         var size =
             UInt32(
                 MemoryLayout<
-                    CFString
+                    Unmanaged<CFString>?
                 >.size
             )
 
@@ -584,7 +583,9 @@ final class CoreAudioDeviceCatalog {
                 "Read CoreAudio string property"
         )
 
-        return value as String
+        return value?
+            .takeUnretainedValue()
+            as String?
     }
 
     private func installListeners() {
