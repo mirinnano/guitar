@@ -5,6 +5,8 @@ enum MacTool:
     CaseIterable,
     Identifiable {
 
+    case practice =
+        "譜面練習"
     case chordDetection =
         "コード判定"
     case roadmap =
@@ -16,6 +18,8 @@ enum MacTool:
 
     var systemImage: String {
         switch self {
+        case .practice:
+            "music.note.list"
         case .chordDetection:
             "waveform.badge.magnifyingglass"
         case .roadmap:
@@ -33,7 +37,7 @@ struct ContentView: View {
     @State
     private var selection:
         MacTool? =
-        .chordDetection
+        .practice
 
     var body: some View {
         NavigationSplitView {
@@ -43,23 +47,30 @@ struct ContentView: View {
                 Section(
                     "Practice"
                 ) {
-                    ForEach(
-                        MacTool.allCases
-                    ) {
-                        tool in
+                    navigationItem(
+                        .practice
+                    )
+                }
 
-                        NavigationLink(
-                            value: tool
-                        ) {
-                            Label(
-                                tool.rawValue,
-                                systemImage:
-                                    tool.systemImage
-                            )
-                        }
-                    }
+                Section(
+                    "Utilities"
+                ) {
+                    navigationItem(
+                        .chordDetection
+                    )
+                }
+
+                Section(
+                    "Project"
+                ) {
+                    navigationItem(
+                        .roadmap
+                    )
                 }
             }
+            .navigationTitle(
+                "Guitar Tools"
+            )
             .navigationSplitViewColumnWidth(
                 min: 190,
                 ideal: 220,
@@ -67,6 +78,11 @@ struct ContentView: View {
             )
         } detail: {
             switch selection {
+            case .practice:
+                ChordFollowPracticeView(
+                    audio: audio
+                )
+
             case .chordDetection:
                 ChordDetectionView(
                     audio: audio
@@ -82,6 +98,33 @@ struct ContentView: View {
                         "guitars"
                 )
             }
+        }
+        .navigationSplitViewStyle(
+            .balanced
+        )
+        .onReceive(
+            NotificationCenter
+                .default
+                .publisher(
+                    for:
+                        .toggleAudioInput
+                )
+        ) { _ in
+            audio.toggle()
+        }
+    }
+
+    private func navigationItem(
+        _ tool: MacTool
+    ) -> some View {
+        NavigationLink(
+            value: tool
+        ) {
+            Label(
+                tool.rawValue,
+                systemImage:
+                    tool.systemImage
+            )
         }
     }
 }
