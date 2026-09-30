@@ -34,6 +34,7 @@ data class ChordWikiUiState(
     val isLoadingSong: Boolean = false,
     val hasSearched: Boolean = false,
     val error: String? = null,
+    val syncNotice: String? = null,
     val bpm: Int = 120,
     val beatsPerBar: Int = 4,
     val beatUnit: Int = 4,
@@ -48,14 +49,34 @@ data class ChordWikiUiState(
     val youtubePositionMs: Long = 0L,
     val youtubeDurationMs: Long = 0L,
     val youtubePlaying: Boolean = false,
-    val youtubeOffsetMs: Long = 0L
-)
+    val youtubePlaybackRate: Float = 1f,
+    val youtubeOffsetMs: Long = 0L,
+    val calibrationMode: Boolean = false,
+    val syncAnchors:
+        List<ChordSyncAnchor> =
+        emptyList()
+) {
+    val syncPrecision: ChordSyncPrecision
+        get() =
+            when (syncAnchors.size) {
+                0 ->
+                    ChordSyncPrecision.BPM_ONLY
+                1 ->
+                    ChordSyncPrecision.OFFSET_LOCKED
+                2 ->
+                    ChordSyncPrecision.GLOBAL_WARP
+                else ->
+                    ChordSyncPrecision.PIECEWISE_WARP
+            }
+}
 
 class ChordWikiViewModel(
     private val client: ChordWikiClient =
         ChordWikiClient(),
     private val metronome: MetronomePlayer =
         MetronomeEngine(),
+    private val syncStore:
+        ChordSyncStore? = null,
     private val nowMs: () -> Long = {
         SystemClock.elapsedRealtime()
     }
@@ -70,6 +91,7 @@ class ChordWikiViewModel(
     private var searchJob: Job? = null
     private var loadJob: Job? = null
     private var transportJob: Job? = null
+    private var youtubeTickerJob: Job? = null
     private var metronomeStartJob: Job? = null
 
     private var transportStartBeat = 0f
@@ -79,6 +101,8 @@ class ChordWikiViewModel(
         Long? = null
     private var lastYoutubeSampleAtMs:
         Long? = null
+    private var lastYoutubePlaybackRate =
+        1f
 
     fun setQuery(
         value: String
@@ -138,10 +162,13 @@ class ChordWikiViewModel(
         loadJob =
             viewModelScope.launch {
                 stopTransport()
+                resetYoutubeSampling()
+
                 _uiState.update {
                     it.copy(
                         isLoadingSong = true,
-                        error = null
+                        error = null,
+                        syncNotice = null
                     )
                 }
 
@@ -173,12 +200,21 @@ class ChordWikiViewModel(
                                 beatsPerBar
                         )
 
+                    val restoredAnchors =
+                        sanitizeStoredAnchors(
+                            syncStore
+                                ?.load(song)
+                                .orEmpty(),
+                            timeline
+                        )
+
                     _uiState.update {
                         it.copy(
                             selectedSong = song,
                             timeline = timeline,
                             isLoadingSong = false,
                             error = null,
+                            syncNotice = null,
                             bpm =
                                 (
                                     song.bpm ?: 120
@@ -198,7 +234,11 @@ class ChordWikiViewModel(
                             youtubePositionMs = 0L,
                             youtubeDurationMs = 0L,
                             youtubePlaying = false,
-                            youtubeOffsetMs = 0L
+                            youtubePlaybackRate = 1f,
+                            youtubeOffsetMs = 0L,
+                            calibrationMode = false,
+                            syncAnchors =
+                                restoredAnchors
                         )
                     }
                 }.onFailure { error ->
@@ -217,18 +257,25 @@ class ChordWikiViewModel(
     fun closeSong() {
         loadJob?.cancel()
         stopTransport()
+        resetYoutubeSampling()
+
         _uiState.update {
             it.copy(
                 selectedSong = null,
                 timeline = null,
                 isLoadingSong = false,
                 error = null,
+                syncNotice = null,
                 currentBeat = 0f,
                 isPlaying = false,
                 youtubeSyncEnabled = false,
                 youtubePositionMs = 0L,
                 youtubeDurationMs = 0L,
-                youtubePlaying = false
+                youtubePlaying = false,
+                youtubePlaybackRate = 1f,
+                calibrationMode = false,
+                syncAnchors =
+                    emptyList()
             )
         }
     }
@@ -260,7 +307,9 @@ class ChordWikiViewModel(
                         withBpm.youtubeSyncEnabled
                     ) {
                         youtubeBeatForPosition(
-                            withBpm.youtubePositionMs,
+                            estimatedYoutubePositionMs(
+                                withBpm
+                            ),
                             withBpm
                         )
                     } else {
@@ -302,12 +351,17 @@ class ChordWikiViewModel(
                 timeline.totalBeats
             )
 
+        syncStore?.clear(song)
+
         _uiState.update {
             it.copy(
                 beatsPerBar = safeBeats,
                 beatUnit = safeUnit,
                 timeline = timeline,
-                currentBeat = current
+                currentBeat = current,
+                syncAnchors = emptyList(),
+                syncNotice =
+                    "拍子を変更したため高精度同期アンカーをリセットしました"
             )
         }
 
@@ -369,7 +423,9 @@ class ChordWikiViewModel(
 
             val beat =
                 youtubeBeatForPosition(
-                    state.youtubePositionMs,
+                    estimatedYoutubePositionMs(
+                        state
+                    ),
                     state
                 )
 
@@ -385,16 +441,20 @@ class ChordWikiViewModel(
             }
 
             if (state.youtubePlaying) {
+                startYoutubeTicker()
                 restartMetronomeAligned()
             }
         } else {
             stopMetronome()
+            stopYoutubeTicker()
+
             _uiState.update {
                 it.copy(
                     youtubeSyncEnabled = false,
                     playbackSource =
                         ChordWikiPlaybackSource.INTERNAL,
-                    isPlaying = false
+                    isPlaying = false,
+                    calibrationMode = false
                 )
             }
         }
@@ -410,21 +470,24 @@ class ChordWikiViewModel(
             )
 
         _uiState.update { state ->
-            state.copy(
-                youtubeOffsetMs = safe,
+            val changed =
+                state.copy(
+                    youtubeOffsetMs = safe
+                )
+
+            changed.copy(
                 currentBeat =
                     if (
-                        state.youtubeSyncEnabled
+                        changed.youtubeSyncEnabled
                     ) {
                         youtubeBeatForPosition(
-                            state.youtubePositionMs,
-                            state.copy(
-                                youtubeOffsetMs =
-                                    safe
-                            )
+                            estimatedYoutubePositionMs(
+                                changed
+                            ),
+                            changed
                         )
                     } else {
-                        state.currentBeat
+                        changed.currentBeat
                     }
             )
         }
@@ -435,6 +498,355 @@ class ChordWikiViewModel(
         ) {
             restartMetronomeAligned()
         }
+    }
+
+    fun setCalibrationMode(
+        enabled: Boolean
+    ) {
+        val state =
+            _uiState.value
+
+        if (
+            enabled &&
+            state.selectedSong
+                ?.youtubeVideoId == null
+        ) {
+            return
+        }
+
+        if (enabled) {
+            stopInternalTransportOnly()
+        }
+
+        _uiState.update {
+            it.copy(
+                calibrationMode = enabled,
+                youtubeSyncEnabled =
+                    if (enabled) {
+                        true
+                    } else {
+                        it.youtubeSyncEnabled
+                    },
+                playbackSource =
+                    if (enabled) {
+                        ChordWikiPlaybackSource.YOUTUBE
+                    } else {
+                        it.playbackSource
+                    },
+                isPlaying =
+                    if (enabled) {
+                        state.youtubePlaying
+                    } else {
+                        it.isPlaying
+                    },
+                syncNotice =
+                    if (enabled) {
+                        "動画を再生または一時停止し、開始瞬間に対応する譜面コードをタップしてください"
+                    } else {
+                        null
+                    }
+            )
+        }
+
+        if (
+            enabled &&
+            state.youtubePlaying
+        ) {
+            startYoutubeTicker()
+        }
+    }
+
+    fun addSyncAnchorAt(
+        event: TimedChordEvent,
+        captureAtMs: Long
+    ) {
+        val state =
+            _uiState.value
+        val song =
+            state.selectedSong
+                ?: return
+
+        if (
+            song.youtubeVideoId == null
+        ) {
+            return
+        }
+
+        val positionMs =
+            estimatedYoutubePositionMs(
+                state = state,
+                atMs = captureAtMs
+            )
+
+        val candidate =
+            ChordSyncAnchor(
+                chartBeat =
+                    event.startBeat,
+                videoPositionMs =
+                    positionMs,
+                symbol =
+                    event.symbol,
+                lineIndex =
+                    event.lineIndex,
+                segmentIndex =
+                    event.segmentIndex
+            )
+
+        if (
+            !ChordSyncMap.canInsert(
+                state.syncAnchors,
+                candidate
+            )
+        ) {
+            _uiState.update {
+                it.copy(
+                    syncNotice =
+                        "この位置では前後のアンカー時刻が逆転します。動画位置を確認して再度タップしてください"
+                )
+            }
+            return
+        }
+
+        val anchors =
+            ChordSyncMap.upsert(
+                state.syncAnchors,
+                candidate
+            )
+
+        syncStore?.save(
+            song,
+            anchors
+        )
+
+        _uiState.update {
+            it.copy(
+                syncAnchors = anchors,
+                youtubeSyncEnabled = true,
+                playbackSource =
+                    ChordWikiPlaybackSource.YOUTUBE,
+                currentBeat =
+                    event.startBeat,
+                syncNotice =
+                    when (anchors.size) {
+                        1 ->
+                            "1点固定: 開始オフセットを正確に補正しました"
+                        2 ->
+                            "2点固定: 曲全体の実テンポへ補正しました"
+                        else ->
+                            anchors.size
+                                .toString() +
+                                "点固定: 区間ごとのテンポ揺れを補正中"
+                    }
+            )
+        }
+
+        if (state.isPlaying) {
+            restartMetronomeAligned()
+        }
+    }
+
+    fun removeSyncAnchor(
+        chartBeat: Float
+    ) {
+        val state =
+            _uiState.value
+        val song =
+            state.selectedSong
+                ?: return
+
+        val anchors =
+            state.syncAnchors
+                .filterNot {
+                    nearlySameBeat(
+                        it.chartBeat,
+                        chartBeat
+                    )
+                }
+
+        if (anchors.isEmpty()) {
+            syncStore?.clear(song)
+        } else {
+            syncStore?.save(
+                song,
+                anchors
+            )
+        }
+
+        val changed =
+            state.copy(
+                syncAnchors = anchors
+            )
+
+        _uiState.update {
+            changed.copy(
+                currentBeat =
+                    if (
+                        changed.youtubeSyncEnabled
+                    ) {
+                        youtubeBeatForPosition(
+                            estimatedYoutubePositionMs(
+                                changed
+                            ),
+                            changed
+                        )
+                    } else {
+                        changed.currentBeat
+                    },
+                syncNotice =
+                    "同期アンカーを削除しました"
+            )
+        }
+
+        if (state.isPlaying) {
+            restartMetronomeAligned()
+        }
+    }
+
+    fun nudgeSyncAnchor(
+        chartBeat: Float,
+        deltaMs: Long
+    ) {
+        val state =
+            _uiState.value
+        val song =
+            state.selectedSong
+                ?: return
+
+        val current =
+            state.syncAnchors
+                .firstOrNull {
+                    nearlySameBeat(
+                        it.chartBeat,
+                        chartBeat
+                    )
+                }
+                ?: return
+
+        val candidate =
+            current.copy(
+                videoPositionMs =
+                    (
+                        current.videoPositionMs +
+                            deltaMs
+                        ).coerceAtLeast(0L)
+            )
+
+        if (
+            !ChordSyncMap.canInsert(
+                state.syncAnchors,
+                candidate
+            )
+        ) {
+            _uiState.update {
+                it.copy(
+                    syncNotice =
+                        "これ以上動かすと隣のアンカーと時系列が逆転します"
+                )
+            }
+            return
+        }
+
+        val anchors =
+            ChordSyncMap.upsert(
+                state.syncAnchors,
+                candidate
+            )
+
+        syncStore?.save(
+            song,
+            anchors
+        )
+
+        val changed =
+            state.copy(
+                syncAnchors = anchors
+            )
+
+        _uiState.update {
+            changed.copy(
+                currentBeat =
+                    if (
+                        changed.youtubeSyncEnabled
+                    ) {
+                        youtubeBeatForPosition(
+                            estimatedYoutubePositionMs(
+                                changed
+                            ),
+                            changed
+                        )
+                    } else {
+                        changed.currentBeat
+                    },
+                syncNotice =
+                    current.symbol +
+                        " を " +
+                        (
+                            if (deltaMs >= 0L) {
+                                "+"
+                            } else {
+                                ""
+                            }
+                            ) +
+                        deltaMs.toString() +
+                        "ms 調整"
+            )
+        }
+
+        if (state.isPlaying) {
+            restartMetronomeAligned()
+        }
+    }
+
+    fun clearSyncAnchors() {
+        val state =
+            _uiState.value
+        val song =
+            state.selectedSong
+                ?: return
+
+        syncStore?.clear(song)
+
+        val changed =
+            state.copy(
+                syncAnchors = emptyList()
+            )
+
+        _uiState.update {
+            changed.copy(
+                currentBeat =
+                    if (
+                        changed.youtubeSyncEnabled
+                    ) {
+                        youtubeBeatForPosition(
+                            estimatedYoutubePositionMs(
+                                changed
+                            ),
+                            changed
+                        )
+                    } else {
+                        changed.currentBeat
+                    },
+                syncNotice =
+                    "高精度同期をリセットしました。BPM + 開始オフセット同期に戻ります"
+            )
+        }
+
+        if (state.isPlaying) {
+            restartMetronomeAligned()
+        }
+    }
+
+    fun videoPositionForBeat(
+        beat: Float
+    ): Long {
+        val state =
+            _uiState.value
+
+        return syncMap(state)
+            ?.videoPositionForBeat(
+                beat
+            )
+            ?: 0L
     }
 
     fun toggleInternalPlayback() {
@@ -490,7 +902,8 @@ class ChordWikiViewModel(
     fun onYoutubeProgress(
         positionMs: Long,
         durationMs: Long,
-        playing: Boolean
+        playing: Boolean,
+        playbackRate: Float
     ) {
         val sampleAt =
             nowMs()
@@ -498,27 +911,49 @@ class ChordWikiViewModel(
         val state =
             _uiState.value
 
+        val safeRate =
+            playbackRate
+                .takeIf {
+                    it.isFinite() &&
+                        it > 0f
+                }
+                ?: 1f
+
         val didSeek =
             detectYoutubeSeek(
                 positionMs = positionMs,
                 playing = playing,
+                playbackRate =
+                    lastYoutubePlaybackRate,
                 sampleAtMs = sampleAt
             )
 
         lastYoutubePositionMs =
             positionMs
+                .coerceAtLeast(0L)
         lastYoutubeSampleAtMs =
             sampleAt
+        lastYoutubePlaybackRate =
+            safeRate
 
         val mappedBeat =
             youtubeBeatForPosition(
                 positionMs,
-                state
+                state.copy(
+                    youtubePlaybackRate =
+                        safeRate
+                )
             )
 
         val playbackChanged =
             state.youtubePlaying !=
                 playing
+
+        val rateChanged =
+            abs(
+                state.youtubePlaybackRate -
+                    safeRate
+            ) > 0.001f
 
         _uiState.update {
             it.copy(
@@ -527,6 +962,8 @@ class ChordWikiViewModel(
                 youtubeDurationMs =
                     durationMs.coerceAtLeast(0L),
                 youtubePlaying = playing,
+                youtubePlaybackRate =
+                    safeRate,
                 currentBeat =
                     if (
                         it.youtubeSyncEnabled
@@ -554,9 +991,19 @@ class ChordWikiViewModel(
             )
         }
 
+        if (playing) {
+            startYoutubeTicker()
+        } else {
+            stopYoutubeTicker()
+        }
+
         if (
             state.youtubeSyncEnabled &&
-            (playbackChanged || didSeek)
+            (
+                playbackChanged ||
+                    didSeek ||
+                    rateChanged
+                )
         ) {
             if (playing) {
                 restartMetronomeAligned()
@@ -568,13 +1015,17 @@ class ChordWikiViewModel(
 
     fun onYoutubeUnavailable() {
         stopMetronome()
+        stopYoutubeTicker()
+
         _uiState.update {
             it.copy(
                 youtubeSyncEnabled = false,
                 youtubePlaying = false,
+                youtubePlaybackRate = 1f,
                 playbackSource =
                     ChordWikiPlaybackSource.INTERNAL,
-                isPlaying = false
+                isPlaying = false,
+                calibrationMode = false
             )
         }
     }
@@ -719,6 +1170,65 @@ class ChordWikiViewModel(
         }
     }
 
+    private fun startYoutubeTicker() {
+        if (
+            youtubeTickerJob
+                ?.isActive == true
+        ) {
+            return
+        }
+
+        youtubeTickerJob =
+            viewModelScope.launch {
+                while (isActive) {
+                    val state =
+                        _uiState.value
+
+                    if (!state.youtubePlaying) {
+                        break
+                    }
+
+                    val position =
+                        estimatedYoutubePositionMs(
+                            state
+                        )
+
+                    _uiState.update {
+                        it.copy(
+                            youtubePositionMs =
+                                position,
+                            currentBeat =
+                                if (
+                                    it.youtubeSyncEnabled
+                                ) {
+                                    youtubeBeatForPosition(
+                                        position,
+                                        it
+                                    )
+                                } else {
+                                    it.currentBeat
+                                },
+                            isPlaying =
+                                if (
+                                    it.youtubeSyncEnabled
+                                ) {
+                                    true
+                                } else {
+                                    it.isPlaying
+                                }
+                        )
+                    }
+
+                    delay(33L)
+                }
+            }
+    }
+
+    private fun stopYoutubeTicker() {
+        youtubeTickerJob?.cancel()
+        youtubeTickerJob = null
+    }
+
     private fun stopInternalTransportOnly() {
         transportJob?.cancel()
         transportJob = null
@@ -726,6 +1236,7 @@ class ChordWikiViewModel(
 
     private fun stopTransport() {
         stopInternalTransportOnly()
+        stopYoutubeTicker()
         stopMetronome()
         _uiState.update {
             it.copy(isPlaying = false)
@@ -745,6 +1256,11 @@ class ChordWikiViewModel(
             return
         }
 
+        val effectiveBpm =
+            effectiveMetronomeBpm(
+                state
+            )
+
         val beatFraction =
             state.currentBeat -
                 floor(state.currentBeat)
@@ -756,7 +1272,7 @@ class ChordWikiViewModel(
                 (
                     (1f - beatFraction) *
                         60_000f /
-                        state.bpm
+                        effectiveBpm
                     ).toLong()
             }
 
@@ -810,7 +1326,9 @@ class ChordWikiViewModel(
 
                         MetronomeConfig(
                             bpm =
-                                latest.bpm,
+                                effectiveMetronomeBpm(
+                                    latest
+                                ),
                             beatsPerBar =
                                 latest.beatsPerBar,
                             beatUnit =
@@ -834,6 +1352,40 @@ class ChordWikiViewModel(
             }
     }
 
+    private fun effectiveMetronomeBpm(
+        state: ChordWikiUiState
+    ): Int {
+        val base =
+            if (
+                state.youtubeSyncEnabled
+            ) {
+                syncMap(state)
+                    ?.localBpmAtBeat(
+                        state.currentBeat
+                    )
+                    ?: state.bpm.toFloat()
+            } else {
+                state.bpm.toFloat()
+            }
+
+        val playbackScale =
+            if (
+                state.youtubeSyncEnabled
+            ) {
+                state.youtubePlaybackRate
+            } else {
+                1f
+            }
+
+        return (
+            base * playbackScale
+            ).toInt()
+            .coerceIn(
+                MetronomeConfig.MIN_BPM,
+                MetronomeConfig.MAX_BPM
+            )
+    }
+
     private fun stopMetronome() {
         metronomeStartJob?.cancel()
         metronomeStartJob = null
@@ -843,26 +1395,76 @@ class ChordWikiViewModel(
     private fun youtubeBeatForPosition(
         positionMs: Long,
         state: ChordWikiUiState
-    ): Float {
+    ): Float =
+        syncMap(state)
+            ?.beatForVideoPosition(
+                positionMs
+            )
+            ?: 0f
+
+    private fun syncMap(
+        state: ChordWikiUiState
+    ): ChordSyncMap? {
         val timeline =
             state.timeline
-                ?: return 0f
+                ?: return null
 
-        val adjusted =
-            (
-                positionMs -
-                    state.youtubeOffsetMs
-                ).coerceAtLeast(0L)
-
-        return timeline.beatForPositionMs(
-            adjusted,
-            state.bpm
+        return ChordSyncMap(
+            anchors =
+                state.syncAnchors,
+            fallbackBpm =
+                state.bpm,
+            fallbackOffsetMs =
+                state.youtubeOffsetMs,
+            totalBeats =
+                timeline.totalBeats
         )
+    }
+
+    private fun estimatedYoutubePositionMs(
+        state: ChordWikiUiState,
+        atMs: Long = nowMs()
+    ): Long {
+        val base =
+            lastYoutubePositionMs
+                ?: state.youtubePositionMs
+
+        val sampleAt =
+            lastYoutubeSampleAtMs
+
+        if (
+            !state.youtubePlaying ||
+            sampleAt == null
+        ) {
+            return base
+                .coerceAtLeast(0L)
+                .coerceAtMostIfPositive(
+                    state.youtubeDurationMs
+                )
+        }
+
+        val elapsed =
+            atMs -
+                sampleAt
+
+        val estimate =
+            base +
+                (
+                    elapsed *
+                        lastYoutubePlaybackRate
+                    ).toLong()
+
+        return estimate
+            .coerceAtLeast(0L)
+            .coerceAtMostIfPositive(
+                state.youtubeDurationMs
+            )
     }
 
     private fun detectYoutubeSeek(
         positionMs: Long,
         playing: Boolean,
+        playbackRate: Float,
         sampleAtMs: Long
     ): Boolean {
         val previousPosition =
@@ -882,7 +1484,10 @@ class ChordWikiViewModel(
         val expected =
             if (playing) {
                 previousPosition +
-                    elapsed
+                    (
+                        elapsed *
+                            playbackRate
+                        ).toLong()
             } else {
                 previousPosition
             }
@@ -890,12 +1495,70 @@ class ChordWikiViewModel(
         return abs(
             positionMs -
                 expected
-        ) > 1_200L
+        ) > 700L
     }
+
+    private fun sanitizeStoredAnchors(
+        source: List<ChordSyncAnchor>,
+        timeline: ChordTimeline
+    ): List<ChordSyncAnchor> {
+        var accepted =
+            emptyList<ChordSyncAnchor>()
+
+        source
+            .filter {
+                it.chartBeat in
+                    0f..timeline.totalBeats &&
+                    it.videoPositionMs >= 0L
+            }
+            .sortedBy {
+                it.chartBeat
+            }
+            .forEach { anchor ->
+                if (
+                    ChordSyncMap.canInsert(
+                        accepted,
+                        anchor
+                    )
+                ) {
+                    accepted =
+                        ChordSyncMap.upsert(
+                            accepted,
+                            anchor
+                        )
+                }
+            }
+
+        return accepted
+    }
+
+    private fun resetYoutubeSampling() {
+        stopYoutubeTicker()
+        lastYoutubePositionMs = null
+        lastYoutubeSampleAtMs = null
+        lastYoutubePlaybackRate = 1f
+    }
+
+    private fun nearlySameBeat(
+        a: Float,
+        b: Float
+    ): Boolean =
+        abs(a - b) <
+            0.0001f
 
     override fun onCleared() {
         searchJob?.cancel()
         loadJob?.cancel()
         stopTransport()
+        resetYoutubeSampling()
     }
 }
+
+private fun Long.coerceAtMostIfPositive(
+    maximum: Long
+): Long =
+    if (maximum > 0L) {
+        coerceAtMost(maximum)
+    } else {
+        this
+    }

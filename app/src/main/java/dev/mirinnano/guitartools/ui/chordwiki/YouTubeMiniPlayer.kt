@@ -99,7 +99,8 @@ fun YouTubeMiniPlayer(
         (
             positionMs: Long,
             durationMs: Long,
-            playing: Boolean
+            playing: Boolean,
+            playbackRate: Float
         ) -> Unit,
     onUnavailable: () -> Unit
 ) {
@@ -114,11 +115,13 @@ fun YouTubeMiniPlayer(
                 onProgress = {
                         positionMs,
                         durationMs,
-                        playing ->
+                        playing,
+                        playbackRate ->
                     latestProgress.value(
                         positionMs,
                         durationMs,
-                        playing
+                        playing,
+                        playbackRate
                     )
                 },
                 onUnavailable = {
@@ -213,7 +216,8 @@ private class YouTubeBridge(
         (
             positionMs: Long,
             durationMs: Long,
-            playing: Boolean
+            playing: Boolean,
+            playbackRate: Float
         ) -> Unit,
     private val onUnavailable: () -> Unit
 ) {
@@ -221,12 +225,14 @@ private class YouTubeBridge(
     fun onProgress(
         positionMs: Long,
         durationMs: Long,
-        playing: Boolean
+        playing: Boolean,
+        playbackRate: Double
     ) {
         onProgress(
             positionMs,
             durationMs,
-            playing
+            playing,
+            playbackRate.toFloat()
         )
     }
 
@@ -292,10 +298,12 @@ private fun playerHtml(
                 var playing = state === YT.PlayerState.PLAYING;
                 var position = Math.round(player.getCurrentTime() * 1000);
                 var duration = Math.round(player.getDuration() * 1000);
+                var playbackRate = player.getPlaybackRate() || 1.0;
                 GuitarToolsBridge.onProgress(
                   position,
                   duration,
-                  playing
+                  playing,
+                  playbackRate
                 );
                 lastPlaying = playing;
               } catch (_) {}
@@ -332,7 +340,7 @@ private fun playerHtml(
             tag.src = 'https://www.youtube.com/iframe_api';
             document.head.appendChild(tag);
 
-            setInterval(report, 250);
+            setInterval(report, 100);
           </script>
         </body>
         </html>

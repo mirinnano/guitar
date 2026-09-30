@@ -112,6 +112,22 @@
     <string name="chordwiki_offset">開始 %+1$.1f秒</string>
     <string name="chordwiki_bar">%1$d小節目</string>
     <string name="chordwiki_timing_note">小節線がある譜面は小節単位、ない行は1行=1小節としてコード位置を推定します。BPMと開始オフセットで同期を微調整できます。</string>
+    <string name="chordwiki_precision_sync">高精度同期</string>
+    <string name="chordwiki_precision_sync_hint">動画時刻と譜面コードをアンカーで結び、区間ごとのテンポ差まで補正します。</string>
+    <string name="chordwiki_calibrate">調整</string>
+    <string name="done">完了</string>
+    <string name="chordwiki_anchor_count">アンカー %1$d点</string>
+    <string name="chordwiki_local_bpm">局所BPM %1$.1f</string>
+    <string name="chordwiki_playback_rate">再生速度 ×%1$.2f</string>
+    <string name="chordwiki_calibration_instruction">動画を正確なコード開始位置に合わせ、譜面上のコード名をタップしてください。2点で全体テンポ、3点以上で区間ごとのズレを補正します。</string>
+    <string name="chordwiki_nudge_earlier">50ミリ秒早める</string>
+    <string name="chordwiki_nudge_later">50ミリ秒遅らせる</string>
+    <string name="chordwiki_remove_anchor">アンカーを削除</string>
+    <string name="chordwiki_reset_calibration">アンカーをすべてリセット</string>
+    <string name="chordwiki_precision_bpm_only">BPM推定</string>
+    <string name="chordwiki_precision_one_anchor">1点固定</string>
+    <string name="chordwiki_precision_two_anchors">全体補正</string>
+    <string name="chordwiki_precision_piecewise">区間補正</string>
 
     <string name="highlight_note">強調する音</string>
     <string name="fretboard_footer">0〜12フレット · Standard tuning</string>
