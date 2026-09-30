@@ -42,6 +42,9 @@ final class ProgressionPracticeModel:
     var artist = ""
 
     @Published
+    var musicalKey = ""
+
+    @Published
     var progression:
         [ProgressionStep] = [
             .init(
@@ -247,6 +250,8 @@ final class ProgressionPracticeModel:
 
         title = chart.title
         artist = chart.artist
+        musicalKey =
+            chart.key ?? ""
         progression = steps
         bpm =
             min(
@@ -302,6 +307,8 @@ final class ProgressionPracticeModel:
         selectedSong = song
         title = song.title
         artist = song.artist
+        musicalKey =
+            song.musicalKey ?? ""
 
         if let value =
             song.bpm {
