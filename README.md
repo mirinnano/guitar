@@ -103,6 +103,18 @@ macOS版は **SwiftUI** で開発し、Android版の延長線に置きます。
 
 詳細: `docs/macos-roadmap.md`
 
+### macOS 実装済み
+
+- SwiftUI `NavigationSplitView` ベースのネイティブMacアプリ
+- `AVAudioEngine` でmacOS既定入力（オーディオIFを想定）を取得
+- 入力チャンネル選択、レベル / クリップ表示
+- 12音クロマ解析からリアルタイムコード判定
+- Major / minor / 5 / 7 / maj7 / m7 / dim / aug / sus2 / sus4
+- 複数フレーム多数決による表示安定化
+- macOS CIで `swift test` / `swift build` / `.app` パッケージ / ad-hoc署名 / Artifact生成
+
+Mac版は録音・ミキサー・アンプシム等を持たず、オーディオ入力を練習解析へ使います。
+
 ## 楽曲データ
 
 曲検索のProviderはコード譜Providerから分離しています。

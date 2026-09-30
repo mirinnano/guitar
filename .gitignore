@@ -12,3 +12,7 @@
 *.keystore
 *.p12
 *.pfx
+
+# macOS SwiftPM / packaged app
+macOS/.build/
+macOS/dist/

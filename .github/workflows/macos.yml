@@ -1,0 +1,52 @@
+name: macOS CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "macOS/**"
+      - ".github/workflows/macos.yml"
+  pull_request:
+    paths:
+      - "macOS/**"
+      - ".github/workflows/macos.yml"
+
+concurrency:
+  group: macos-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-package:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Unit tests
+        run: swift test --package-path macOS
+
+      - name: Debug build
+        run: swift build --package-path macOS
+
+      - name: Package app bundle
+        run: |
+          chmod +x macOS/scripts/package-app.sh
+          macOS/scripts/package-app.sh
+
+      - name: Verify code signature
+        run: codesign --verify --deep --strict "macOS/dist/Guitar Tools.app"
+
+      - name: Archive app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent             "macOS/dist/Guitar Tools.app"             "macOS/dist/GuitarToolsMac.zip"
+
+      - name: Upload macOS app
+        uses: actions/upload-artifact@v7
+        with:
+          name: guitar-tools-macos
+          path: macOS/dist/GuitarToolsMac.zip
+          if-no-files-found: error
+          retention-days: 14
