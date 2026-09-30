@@ -41,6 +41,12 @@ jobs:
       - name: Verify code signature
         run: codesign --verify --deep --strict "macOS/dist/Guitar Tools.app"
 
+      - name: Verify app bundle
+        run: |
+          plutil -lint "macOS/dist/Guitar Tools.app/Contents/Info.plist"
+          test -x "macOS/dist/Guitar Tools.app/Contents/MacOS/GuitarToolsMacApp"
+          "macOS/dist/Guitar Tools.app/Contents/MacOS/GuitarToolsMacApp" --smoke-test
+
       - name: Verify artifact contents
         run: |
           test -d "macOS/dist/Guitar Tools.app"
