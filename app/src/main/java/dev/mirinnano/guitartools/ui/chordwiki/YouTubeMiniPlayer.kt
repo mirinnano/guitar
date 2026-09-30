@@ -226,13 +226,13 @@ private class YouTubeBridge(
         positionMs: Long,
         durationMs: Long,
         playing: Boolean,
-        playbackRate: Float
+        playbackRate: Double
     ) {
         onProgress(
             positionMs,
             durationMs,
             playing,
-            playbackRate
+            playbackRate.toFloat()
         )
     }
 
