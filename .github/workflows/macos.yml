@@ -41,10 +41,15 @@ jobs:
       - name: Verify code signature
         run: codesign --verify --deep --strict "macOS/dist/Guitar Tools.app"
 
+      - name: Verify artifact contents
+        run: |
+          test -d "macOS/dist/Guitar Tools.app"
+          test "$(find macOS/dist -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = "1"
+
       - name: Upload macOS app
         uses: actions/upload-artifact@v7
         with:
           name: Guitar Tools.app
-          path: macOS/dist/Guitar Tools.app
+          path: macOS/dist/
           if-no-files-found: error
           retention-days: 14
