@@ -99,6 +99,39 @@ class ChordWikiParserTest {
     }
 
     @Test
+    fun parsesMeterAndYouTubeLink() {
+        val song =
+            ChordWikiParser.parse(
+                source =
+                    """
+                    {time:3/4}
+                    {https://www.youtube.com/watch?v=dQw4w9WgXcQ}
+                    [C]hello
+                    """.trimIndent(),
+                fallbackTitle = "Test",
+                sourceUrl = "https://example.com"
+            )
+
+        assertEquals(3, song.beatsPerBar)
+        assertEquals(4, song.beatUnit)
+        assertEquals(
+            "dQw4w9WgXcQ",
+            song.youtubeVideoId
+        )
+    }
+
+    @Test
+    fun parsesShortYouTubeLink() {
+        assertEquals(
+            "dQw4w9WgXcQ",
+            ChordWikiParser
+                .extractYouTubeVideoId(
+                    "{https://youtu.be/dQw4w9WgXcQ}"
+                )
+        )
+    }
+
+    @Test
     fun extractsBpmFromCommentWhenNoTempoDirective() {
         val song =
             ChordWikiParser.parse(
