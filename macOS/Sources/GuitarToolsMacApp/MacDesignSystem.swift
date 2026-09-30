@@ -4,7 +4,7 @@ struct MacPageHeader<Trailing: View>: View {
 
     let title: String
     let subtitle: String?
-    @ViewBuilder let trailing: () -> Trailing
+    let trailing: () -> Trailing
 
     init(
         _ title: String,
@@ -71,7 +71,7 @@ struct MacSection<Content: View>: View {
 
     let title: String
     let subtitle: String?
-    @ViewBuilder let content: () -> Content
+    let content: () -> Content
 
     init(
         _ title: String,
