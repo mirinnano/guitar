@@ -105,145 +105,68 @@ struct MacBeatEvent {
     }
 }
 
-final class MacMetronomeEngine {
+struct MacMetronomePulseState {
+    var beatInBar: Int
+    var subdivisionIndex: Int
+    var countInPulses: Int
 
-    private let queue =
-        DispatchQueue(
-            label:
-                "dev.mirinnano.guitartools.mac.metronome",
-            qos: .userInteractive
-        )
-
-    private let engine =
-        AVAudioEngine()
-
-    private let player =
-        AVAudioPlayerNode()
-
-    private var generation = 0
-    private var running = false
-    private var beatInBar = 0
-    private var subdivisionIndex = 0
-    private var countInPulses = 0
-
-    private let sampleRate =
-        48_000.0
-
-    init() {
-        engine.attach(player)
-
-        let format =
-            AVAudioFormat(
-                standardFormatWithSampleRate:
-                    sampleRate,
-                channels: 1
-            )!
-
-        engine.connect(
-            player,
-            to:
-                engine.mainMixerNode,
-            format: format
-        )
-    }
-
-    func start(
-        startingBeat: Int = 0,
-        configProvider:
-            @escaping () ->
-            MacMetronomeConfig,
-        onBeat:
-            @escaping (
-                MacBeatEvent
-            ) -> Void,
-        onError:
-            @escaping (
-                Error
-            ) -> Void = { _ in }
+    init(
+        startingBeat: Int,
+        config:
+            MacMetronomeConfig
     ) {
-        guard !running else {
-            return
-        }
-
-        let initial =
-            configProvider()
-
-        running = true
         beatInBar =
             max(
                 startingBeat,
                 0
             ) %
             max(
-                initial.beatsPerBar,
+                config.beatsPerBar,
                 1
             )
+
         subdivisionIndex = 0
+
         countInPulses =
-            initial.countInBars *
-            initial.beatsPerBar *
-            initial.subdivision
-                .rawValue
-
-        generation += 1
-        let token = generation
-
-        do {
-            if !engine.isRunning {
-                try engine.start()
-            }
-            player.play()
-        } catch {
-            running = false
-            onError(error)
-            return
-        }
-
-        queue.async {
-            [weak self] in
-
-            self?.schedulePulse(
-                token: token,
-                configProvider:
-                    configProvider,
-                onBeat: onBeat
+            max(
+                config.countInBars,
+                0
+            ) *
+            max(
+                config.beatsPerBar,
+                1
+            ) *
+            max(
+                config.subdivision
+                    .rawValue,
+                1
             )
-        }
     }
 
-    func stop() {
-        running = false
-        generation += 1
-        player.stop()
-    }
+    mutating func nextEvent(
+        config:
+            MacMetronomeConfig
+    ) -> MacBeatEvent {
+        let beatsPerBar =
+            max(
+                config.beatsPerBar,
+                1
+            )
 
-    private func schedulePulse(
-        token: Int,
-        configProvider:
-            @escaping () ->
-            MacMetronomeConfig,
-        onBeat:
-            @escaping (
-                MacBeatEvent
-            ) -> Void
-    ) {
-        guard
-            running,
-            token == generation
-        else {
-            return
-        }
-
-        let config =
-            configProvider()
+        let subdivisions =
+            max(
+                config.subdivision
+                    .rawValue,
+                1
+            )
 
         if beatInBar >=
-            config.beatsPerBar {
+            beatsPerBar {
             beatInBar = 0
         }
 
         if subdivisionIndex >=
-            config.subdivision.rawValue {
+            subdivisions {
             subdivisionIndex = 0
         }
 
@@ -294,27 +217,6 @@ final class MacMetronomeEngine {
                     effective
             )
 
-        DispatchQueue.main.async {
-            onBeat(event)
-        }
-
-        if effective != .mute {
-            let buffer =
-                clickBuffer(
-                    sound:
-                        config
-                            .clickSound,
-                    accent:
-                        effective,
-                    isSubdivision:
-                        !main
-                )
-
-            player.scheduleBuffer(
-                buffer
-            )
-        }
-
         if countInPulses > 0 {
             countInPulses -= 1
         }
@@ -322,54 +224,494 @@ final class MacMetronomeEngine {
         subdivisionIndex += 1
 
         if subdivisionIndex >=
-            config.subdivision
-                .rawValue {
+            subdivisions {
             subdivisionIndex = 0
             beatInBar =
                 (
                     beatInBar + 1
                 ) %
-                max(
-                    config.beatsPerBar,
-                    1
-                )
+                beatsPerBar
         }
 
-        let interval =
-            60.0 /
-            Double(
-                max(
-                    config.bpm,
-                    1
-                )
-            ) /
-            Double(
-                config
-                    .subdivision
-                    .rawValue
+        return event
+    }
+
+    static func intervalSeconds(
+        config:
+            MacMetronomeConfig
+    ) -> Double {
+        60.0 /
+        Double(
+            max(
+                config.bpm,
+                1
+            )
+        ) /
+        Double(
+            max(
+                config.subdivision
+                    .rawValue,
+                1
+            )
+        )
+    }
+}
+
+final class MacMetronomeEngine {
+
+    private let schedulerQueue =
+        DispatchQueue(
+            label:
+                "dev.mirinnano.guitartools.mac.metronome.scheduler",
+            qos: .userInteractive
+        )
+
+    private let stateLock =
+        NSLock()
+
+    private let engine =
+        AVAudioEngine()
+
+    private let player =
+        AVAudioPlayerNode()
+
+    private let clock:
+        any AudioHostClock
+
+    private let sampleRate =
+        48_000.0
+
+    private let lookaheadSeconds =
+        0.12
+
+    private let schedulerInterval =
+        0.02
+
+    private let startupLeadSeconds =
+        0.06
+
+    private var scheduler:
+        DispatchSourceTimer?
+
+    private var running = false
+    private var generation = 0
+
+    private var pulseState =
+        MacMetronomePulseState(
+            startingBeat: 0,
+            config:
+                MacMetronomeConfig()
+        )
+
+    private var nextPulseHostSeconds =
+        0.0
+
+    private var configProvider:
+        (() -> MacMetronomeConfig)?
+
+    private var onBeat:
+        ((MacBeatEvent) -> Void)?
+
+    private var clickBuffers:
+        [String: AVAudioPCMBuffer] =
+        [:]
+
+    init(
+        clock:
+            any AudioHostClock =
+            SystemAudioHostClock()
+    ) {
+        self.clock = clock
+
+        engine.attach(player)
+
+        let format =
+            AVAudioFormat(
+                standardFormatWithSampleRate:
+                    sampleRate,
+                channels: 1
+            )!
+
+        engine.connect(
+            player,
+            to:
+                engine.mainMixerNode,
+            format: format
+        )
+    }
+
+    func start(
+        startingBeat: Int = 0,
+        configProvider:
+            @escaping () ->
+            MacMetronomeConfig,
+        onBeat:
+            @escaping (
+                MacBeatEvent
+            ) -> Void,
+        onError:
+            @escaping (
+                Error
+            ) -> Void = { _ in }
+    ) {
+        let initial =
+            configProvider()
+
+        let token:
+            Int
+
+        stateLock.lock()
+
+        guard !running
+        else {
+            stateLock.unlock()
+            return
+        }
+
+        running = true
+        generation += 1
+        token = generation
+        self.configProvider =
+            configProvider
+        self.onBeat = onBeat
+
+        pulseState =
+            MacMetronomePulseState(
+                startingBeat:
+                    startingBeat,
+                config: initial
             )
 
-        queue.asyncAfter(
-            deadline:
-                .now() +
-                interval
-        ) {
+        nextPulseHostSeconds =
+            clock.nowSeconds() +
+            startupLeadSeconds
+
+        stateLock.unlock()
+
+        do {
+            if !engine.isRunning {
+                try engine.start()
+            }
+
+            player.prepare(
+                withFrameCount:
+                    AVAudioFrameCount(
+                        sampleRate *
+                        0.06
+                    )
+            )
+
+            player.play()
+
+            installScheduler(
+                token: token
+            )
+        } catch {
+            stateLock.lock()
+            running = false
+            generation += 1
+            self.configProvider = nil
+            self.onBeat = nil
+            stateLock.unlock()
+
+            onError(error)
+        }
+    }
+
+    func stop() {
+        let timer:
+            DispatchSourceTimer?
+
+        stateLock.lock()
+        running = false
+        generation += 1
+        timer = scheduler
+        scheduler = nil
+        configProvider = nil
+        onBeat = nil
+        stateLock.unlock()
+
+        timer?.cancel()
+        player.stop()
+    }
+
+    private func installScheduler(
+        token: Int
+    ) {
+        let timer =
+            DispatchSource.makeTimerSource(
+                queue:
+                    schedulerQueue
+            )
+
+        timer.schedule(
+            deadline: .now(),
+            repeating:
+                schedulerInterval,
+            leeway:
+                .milliseconds(2)
+        )
+
+        timer.setEventHandler {
             [weak self] in
 
-            self?.schedulePulse(
-                token: token,
-                configProvider:
-                    configProvider,
-                onBeat: onBeat
+            self?.fillLookahead(
+                token: token
+            )
+        }
+
+        stateLock.lock()
+
+        if
+            running,
+            generation == token {
+            scheduler?.cancel()
+            scheduler = timer
+            stateLock.unlock()
+            timer.resume()
+        } else {
+            stateLock.unlock()
+            timer.cancel()
+        }
+    }
+
+    private func fillLookahead(
+        token: Int
+    ) {
+        while true {
+            let snapshot =
+                nextSchedulingSnapshot(
+                    token: token
+                )
+
+            guard let snapshot
+            else {
+                return
+            }
+
+            let now =
+                clock.nowSeconds()
+
+            guard
+                snapshot.eventTime <=
+                    now +
+                    lookaheadSeconds
+            else {
+                return
+            }
+
+            let config =
+                currentConfig(
+                    provider:
+                        snapshot.provider
+                )
+
+            let scheduled =
+                advancePulse(
+                    token: token,
+                    config: config
+                )
+
+            guard let scheduled
+            else {
+                return
+            }
+
+            schedule(
+                scheduled.event,
+                at:
+                    scheduled.eventTime,
+                config: config,
+                token: token
             )
         }
     }
 
+    private func nextSchedulingSnapshot(
+        token: Int
+    ) -> (
+        eventTime: Double,
+        provider:
+            () -> MacMetronomeConfig
+    )? {
+        stateLock.lock()
+        defer {
+            stateLock.unlock()
+        }
+
+        guard
+            running,
+            generation == token,
+            let configProvider
+        else {
+            return nil
+        }
+
+        return (
+            nextPulseHostSeconds,
+            configProvider
+        )
+    }
+
+    private func currentConfig(
+        provider:
+            @escaping () ->
+            MacMetronomeConfig
+    ) -> MacMetronomeConfig {
+        if Thread.isMainThread {
+            return provider()
+        }
+
+        return DispatchQueue
+            .main
+            .sync {
+                provider()
+            }
+    }
+
+    private func advancePulse(
+        token: Int,
+        config:
+            MacMetronomeConfig
+    ) -> (
+        event:
+            MacBeatEvent,
+        eventTime:
+            Double
+    )? {
+        stateLock.lock()
+        defer {
+            stateLock.unlock()
+        }
+
+        guard
+            running,
+            generation == token
+        else {
+            return nil
+        }
+
+        let eventTime =
+            nextPulseHostSeconds
+
+        let event =
+            pulseState.nextEvent(
+                config: config
+            )
+
+        nextPulseHostSeconds +=
+            MacMetronomePulseState
+                .intervalSeconds(
+                    config: config
+                )
+
+        return (
+            event,
+            eventTime
+        )
+    }
+
+    private func schedule(
+        _ event:
+            MacBeatEvent,
+        at eventTime:
+            Double,
+        config:
+            MacMetronomeConfig,
+        token: Int
+    ) {
+        if event.accent != .mute {
+            let buffer =
+                clickBuffer(
+                    sound:
+                        config
+                            .clickSound,
+                    accent:
+                        event.accent,
+                    isSubdivision:
+                        !event
+                            .isMainBeat
+                )
+
+            let hostTime =
+                clock.hostTime(
+                    forSeconds:
+                        eventTime
+                )
+
+            player.scheduleBuffer(
+                buffer,
+                at:
+                    AVAudioTime(
+                        hostTime:
+                            hostTime
+                    ),
+                options: []
+            )
+        }
+
+        let delay =
+            max(
+                eventTime -
+                clock.nowSeconds(),
+                0
+            )
+
+        DispatchQueue.main
+            .asyncAfter(
+                deadline:
+                    .now() +
+                    delay
+            ) {
+                [weak self] in
+
+                guard
+                    let self,
+                    self.isActive(
+                        token: token
+                    )
+                else {
+                    return
+                }
+
+                self.onBeat?(
+                    event
+                )
+            }
+    }
+
+    private func isActive(
+        token: Int
+    ) -> Bool {
+        stateLock.lock()
+        defer {
+            stateLock.unlock()
+        }
+
+        return running &&
+            generation == token
+    }
+
     private func clickBuffer(
-        sound: MacClickSound,
-        accent: MacBeatAccent,
-        isSubdivision: Bool
+        sound:
+            MacClickSound,
+        accent:
+            MacBeatAccent,
+        isSubdivision:
+            Bool
     ) -> AVAudioPCMBuffer {
+        let key =
+            sound.rawValue +
+            ":" +
+            String(accent.rawValue) +
+            ":" +
+            String(isSubdivision)
+
+        if let cached =
+            clickBuffers[key] {
+            return cached
+        }
+
         let length =
             sound == .hiHat
             ? 0.055
@@ -485,6 +827,9 @@ final class MacMetronomeEngine {
                     amplitude
                 )
         }
+
+        clickBuffers[key] =
+            buffer
 
         return buffer
     }
