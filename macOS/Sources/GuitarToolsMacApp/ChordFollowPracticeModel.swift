@@ -51,17 +51,32 @@ final class ChordFollowPracticeModel:
 
     @Published
     var inputLatencyCompensationMs =
-        0.0
+        0.0 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
     var onTimeToleranceMs =
-        90.0
+        90.0 {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     @Published
-    var autoScroll = true
+    var autoScroll = true {
+        didSet {
+            persistPreferences()
+        }
+    }
 
     private let audio:
         AudioInputModel
+
+    private let preferencesStore:
+        AppPreferencesStore
 
     private let clock:
         any AudioHostClock
@@ -87,6 +102,8 @@ final class ChordFollowPracticeModel:
 
     init(
         audio: AudioInputModel,
+        preferencesStore:
+            AppPreferencesStore,
         clock:
             any AudioHostClock =
             SystemAudioHostClock(),
@@ -95,9 +112,24 @@ final class ChordFollowPracticeModel:
             PracticeSessionStore()
     ) {
         self.audio = audio
+        self.preferencesStore =
+            preferencesStore
         self.clock = clock
         self.sessionStore =
             sessionStore
+
+        let saved =
+            preferencesStore.value
+
+        inputLatencyCompensationMs =
+            saved.audio
+                .inputLatencyCompensationMs
+        onTimeToleranceMs =
+            saved.practice
+                .onTimeToleranceMs
+        autoScroll =
+            saved.practice
+                .autoScroll
 
         audio.onOnset = {
             [weak self]
@@ -560,6 +592,25 @@ final class ChordFollowPracticeModel:
 
         self.pending = nil
         pendingExpected = nil
+    }
+
+    private func persistPreferences() {
+        preferencesStore
+            .update {
+                value in
+
+                value.audio
+                    .inputLatencyCompensationMs =
+                    self
+                        .inputLatencyCompensationMs
+                value.practice
+                    .onTimeToleranceMs =
+                    self
+                        .onTimeToleranceMs
+                value.practice
+                    .autoScroll =
+                    self.autoScroll
+            }
     }
 
     private func persistCurrentSession() {
