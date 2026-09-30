@@ -14,6 +14,375 @@ struct ChordWikiSearchResult:
     }
 }
 
+enum ChordWikiSearchParser {
+
+    private static let baseURL =
+        URL(
+            string:
+                "https://ja.chordwiki.org"
+        )!
+
+    private static let excludedCommands =
+        Set(
+            [
+                "search",
+                "edit",
+                "diff",
+                "new",
+                "history",
+                "infoedit"
+            ]
+        )
+
+    static func parse(
+        html: String
+    ) -> [ChordWikiSearchResult] {
+        let pattern =
+            #"(?is)<a[^>]+href\s*=\s*["']([^"']+)["'][^>]*>"#
+
+        guard let regex =
+            try? NSRegularExpression(
+                pattern: pattern
+            )
+        else {
+            return []
+        }
+
+        let ns =
+            html as NSString
+
+        var seen =
+            Set<String>()
+
+        var values:
+            [ChordWikiSearchResult] = []
+
+        for match in regex.matches(
+            in: html,
+            range: NSRange(
+                location: 0,
+                length: ns.length
+            )
+        ) {
+            let rawHref =
+                htmlDecode(
+                    ns.substring(
+                        with:
+                            match.range(
+                                at: 1
+                            )
+                    )
+                )
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+
+            guard
+                let absoluteURL =
+                    URL(
+                        string: rawHref,
+                        relativeTo:
+                            baseURL
+                    )?
+                    .absoluteURL,
+                absoluteURL.host ==
+                    baseURL.host,
+                let title =
+                    title(
+                        from:
+                            absoluteURL
+                    ),
+                !seen.contains(title),
+                let canonical =
+                    canonicalURL(
+                        title: title
+                    )
+            else {
+                continue
+            }
+
+            seen.insert(title)
+
+            values.append(
+                ChordWikiSearchResult(
+                    title: title,
+                    url: canonical
+                )
+            )
+
+            if values.count >= 30 {
+                break
+            }
+        }
+
+        return values
+    }
+
+    static func title(
+        from url: URL
+    ) -> String? {
+        guard
+            url.host ==
+                baseURL.host,
+            let components =
+                URLComponents(
+                    url: url,
+                    resolvingAgainstBaseURL:
+                        true
+                )
+        else {
+            return nil
+        }
+
+        let path =
+            components.path
+
+        if path.hasPrefix(
+            "/wiki/"
+        ) {
+            let encodedPath =
+                components
+                    .percentEncodedPath
+
+            let encodedTitle =
+                String(
+                    encodedPath
+                        .dropFirst(
+                            "/wiki/"
+                                .count
+                        )
+                )
+
+            return decodedComponent(
+                encodedTitle
+            )
+            .trimmingCharacters(
+                in:
+                    .whitespacesAndNewlines
+            )
+            .nilIfBlank
+        }
+
+        guard
+            path == "/wiki.cgi"
+        else {
+            return nil
+        }
+
+        let command =
+            rawQueryParameter(
+                components
+                    .percentEncodedQuery,
+                name: "c"
+            )?
+            .lowercased()
+
+        if let command,
+           excludedCommands
+            .contains(command) {
+            return nil
+        }
+
+        return rawQueryParameter(
+            components
+                .percentEncodedQuery,
+            name: "t"
+        )?
+        .trimmingCharacters(
+            in:
+                .whitespacesAndNewlines
+        )
+        .nilIfBlank
+    }
+
+    static func canonicalURL(
+        title: String
+    ) -> URL? {
+        var allowed =
+            CharacterSet
+                .urlPathAllowed
+
+        allowed.remove(
+            charactersIn:
+                "/?#%"
+        )
+
+        guard let encoded =
+            title.addingPercentEncoding(
+                withAllowedCharacters:
+                    allowed
+            )
+        else {
+            return nil
+        }
+
+        return URL(
+            string:
+                "https://ja.chordwiki.org/wiki/\(encoded)"
+        )
+    }
+
+    private static func rawQueryParameter(
+        _ rawQuery: String?,
+        name: String
+    ) -> String? {
+        rawQuery?
+            .split(
+                separator: "&",
+                omittingEmptySubsequences:
+                    false
+            )
+            .first {
+                pair in
+
+                pair
+                    .split(
+                        separator: "=",
+                        maxSplits: 1,
+                        omittingEmptySubsequences:
+                            false
+                    )
+                    .first
+                    .map(String.init) ==
+                name
+            }
+            .map(String.init)
+            .map {
+                pair in
+
+                let value =
+                    pair
+                        .split(
+                            separator: "=",
+                            maxSplits: 1,
+                            omittingEmptySubsequences:
+                                false
+                        )
+
+                guard
+                    value.count == 2
+                else {
+                    return ""
+                }
+
+                return decodedComponent(
+                    String(value[1])
+                )
+            }
+    }
+
+    private static func decodedComponent(
+        _ value: String
+    ) -> String {
+        value
+            .replacingOccurrences(
+                of: "+",
+                with: " "
+            )
+            .removingPercentEncoding
+        ?? value
+    }
+
+    private static func htmlDecode(
+        _ value: String
+    ) -> String {
+        var result =
+            value
+                .replacingOccurrences(
+                    of: "&amp;",
+                    with: "&"
+                )
+                .replacingOccurrences(
+                    of: "&lt;",
+                    with: "<"
+                )
+                .replacingOccurrences(
+                    of: "&gt;",
+                    with: ">"
+                )
+                .replacingOccurrences(
+                    of: "&quot;",
+                    with: "\""
+                )
+                .replacingOccurrences(
+                    of: "&#39;",
+                    with: "'"
+                )
+                .replacingOccurrences(
+                    of: "&nbsp;",
+                    with: " "
+                )
+
+        let pattern =
+            #"&#(x?[0-9A-Fa-f]+);"#
+
+        guard let regex =
+            try? NSRegularExpression(
+                pattern: pattern
+            )
+        else {
+            return result
+        }
+
+        for match in regex
+            .matches(
+                in: result,
+                range: NSRange(
+                    location: 0,
+                    length:
+                        (result as NSString)
+                            .length
+                )
+            )
+            .reversed() {
+            let ns =
+                result as NSString
+
+            let token =
+                ns.substring(
+                    with:
+                        match.range(at: 1)
+                )
+
+            let scalarValue:
+                UInt32?
+
+            if token.lowercased()
+                .hasPrefix("x") {
+                scalarValue =
+                    UInt32(
+                        token.dropFirst(),
+                        radix: 16
+                    )
+            } else {
+                scalarValue =
+                    UInt32(token)
+            }
+
+            if let scalarValue,
+               let scalar =
+                UnicodeScalar(
+                    scalarValue
+                ) {
+                result =
+                    ns.replacingCharacters(
+                        in:
+                            match.range(at: 0),
+                        with:
+                            String(
+                                Character(
+                                    scalar
+                                )
+                            )
+                    )
+            }
+        }
+
+        return result
+    }
+}
+
 actor ChordWikiMacClient {
 
     private let session:
@@ -31,6 +400,17 @@ actor ChordWikiMacClient {
     ) async throws
         -> [ChordWikiSearchResult] {
 
+        let normalized =
+            query.trimmingCharacters(
+                in:
+                    .whitespacesAndNewlines
+            )
+
+        guard !normalized.isEmpty
+        else {
+            return []
+        }
+
         var components =
             URLComponents(
                 string:
@@ -44,7 +424,7 @@ actor ChordWikiMacClient {
             ),
             URLQueryItem(
                 name: "q",
-                value: query
+                value: normalized
             )
         ]
 
@@ -58,9 +438,8 @@ actor ChordWikiMacClient {
         let html =
             try await requestText(url)
 
-        return parseSearchResults(
-            html
-        )
+        return ChordWikiSearchParser
+            .parse(html: html)
     }
 
     func loadChart(
@@ -122,11 +501,19 @@ actor ChordWikiMacClient {
             URLRequest(url: url)
 
         request.timeoutInterval = 12
+
         request.setValue(
-            "GuitarToolsMac/0.1",
+            "text/html,application/xhtml+xml",
+            forHTTPHeaderField:
+                "Accept"
+        )
+
+        request.setValue(
+            "GuitarToolsMac/0.3 (+https://github.com/mirinnano/guitar)",
             forHTTPHeaderField:
                 "User-Agent"
         )
+
         request.setValue(
             "ja,en;q=0.8",
             forHTTPHeaderField:
@@ -167,157 +554,6 @@ actor ChordWikiMacClient {
         return text
     }
 
-    private func parseSearchResults(
-        _ html: String
-    ) -> [ChordWikiSearchResult] {
-        let pattern =
-            #"(?is)<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)</a>"#
-
-        guard let regex =
-            try? NSRegularExpression(
-                pattern: pattern
-            )
-        else {
-            return []
-        }
-
-        let ns =
-            html as NSString
-
-        var seen = Set<String>()
-        var results:
-            [ChordWikiSearchResult] = []
-
-        for match in regex.matches(
-            in: html,
-            range: NSRange(
-                location: 0,
-                length: ns.length
-            )
-        ) {
-            let href =
-                htmlDecode(
-                    ns.substring(
-                        with:
-                            match.range(
-                                at: 1
-                            )
-                    )
-                )
-
-            let rawTitle =
-                ns.substring(
-                    with:
-                        match.range(
-                            at: 2
-                        )
-                )
-
-            let title =
-                htmlDecode(
-                    rawTitle
-                        .replacingOccurrences(
-                            of:
-                                #"<[^>]+>"#,
-                            with: "",
-                            options:
-                                .regularExpression
-                        )
-                )
-                .trimmingCharacters(
-                    in:
-                        .whitespacesAndNewlines
-                )
-
-            guard
-                !title.isEmpty,
-                isChartLink(href),
-                !seen.contains(title),
-                let url =
-                    resolvedURL(
-                        href: href,
-                        title: title
-                    )
-            else {
-                continue
-            }
-
-            seen.insert(title)
-
-            results.append(
-                ChordWikiSearchResult(
-                    title: title,
-                    url: url
-                )
-            )
-        }
-
-        return results
-    }
-
-    private func isChartLink(
-        _ href: String
-    ) -> Bool {
-        if href.contains(
-            "c=edit"
-        ) ||
-            href.contains(
-                "c=search"
-            ) ||
-            href.contains(
-                "c=history"
-            ) ||
-            href.contains(
-                "c=diff"
-            ) {
-            return false
-        }
-
-        return href.contains(
-            "/wiki/"
-        ) ||
-            href.contains(
-                "c=view"
-            )
-    }
-
-    private func resolvedURL(
-        href: String,
-        title: String
-    ) -> URL? {
-        if let absolute =
-            URL(string: href),
-           absolute.scheme != nil {
-            return absolute
-        }
-
-        if let relative =
-            URL(
-                string: href,
-                relativeTo:
-                    URL(
-                        string:
-                            "https://ja.chordwiki.org"
-                    )
-            ) {
-            return relative
-                .absoluteURL
-        }
-
-        let escaped =
-            title
-                .addingPercentEncoding(
-                    withAllowedCharacters:
-                        .urlPathAllowed
-                )
-                ?? title
-
-        return URL(
-            string:
-                "https://ja.chordwiki.org/wiki/\(escaped)"
-        )
-    }
-
     private func extractChordSource(
         _ html: String
     ) -> String? {
@@ -348,7 +584,7 @@ actor ChordWikiMacClient {
             return nil
         }
 
-        return htmlDecode(
+        return decodeHTMLText(
             ns.substring(
                 with:
                     match.range(at: 1)
@@ -356,101 +592,34 @@ actor ChordWikiMacClient {
         )
     }
 
-    private func htmlDecode(
+    private func decodeHTMLText(
         _ value: String
     ) -> String {
-        var result =
-            value
-                .replacingOccurrences(
-                    of: "&amp;",
-                    with: "&"
-                )
-                .replacingOccurrences(
-                    of: "&lt;",
-                    with: "<"
-                )
-                .replacingOccurrences(
-                    of: "&gt;",
-                    with: ">"
-                )
-                .replacingOccurrences(
-                    of: "&quot;",
-                    with: "\""
-                )
-                .replacingOccurrences(
-                    of: "&#39;",
-                    with: "'"
-                )
-                .replacingOccurrences(
-                    of: "&nbsp;",
-                    with: " "
-                )
-
-        let pattern =
-            #"&#(x?[0-9A-Fa-f]+);"#
-
-        guard let regex =
-            try? NSRegularExpression(
-                pattern: pattern
+        value
+            .replacingOccurrences(
+                of: "&amp;",
+                with: "&"
             )
-        else {
-            return result
-        }
-
-        let matches =
-            regex.matches(
-                in: result,
-                range: NSRange(
-                    location: 0,
-                    length:
-                        (result as NSString)
-                            .length
-                )
+            .replacingOccurrences(
+                of: "&lt;",
+                with: "<"
             )
-            .reversed()
-
-        for match in matches {
-            let ns =
-                result as NSString
-
-            let token =
-                ns.substring(
-                    with:
-                        match.range(at: 1)
-                )
-
-            let value: UInt32?
-
-            if token.lowercased()
-                .hasPrefix("x") {
-                value =
-                    UInt32(
-                        token.dropFirst(),
-                        radix: 16
-                    )
-            } else {
-                value =
-                    UInt32(token)
-            }
-
-            if let value,
-               let scalar =
-                UnicodeScalar(value) {
-                result =
-                    ns.replacingCharacters(
-                        in:
-                            match.range(at: 0),
-                        with:
-                            String(
-                                Character(
-                                    scalar
-                                )
-                            )
-                    )
-            }
-        }
-
-        return result
+            .replacingOccurrences(
+                of: "&gt;",
+                with: ">"
+            )
+            .replacingOccurrences(
+                of: "&quot;",
+                with: "\""
+            )
+            .replacingOccurrences(
+                of: "&#39;",
+                with: "'"
+            )
+            .replacingOccurrences(
+                of: "&nbsp;",
+                with: " "
+            )
     }
 
     enum ClientError:
@@ -474,5 +643,12 @@ actor ChordWikiMacClient {
                 "コード譜ソースを取得できませんでした。"
             }
         }
+    }
+}
+
+private extension String {
+
+    var nilIfBlank: String? {
+        isEmpty ? nil : self
     }
 }
