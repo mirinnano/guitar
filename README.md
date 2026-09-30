@@ -43,6 +43,17 @@ Kotlin + Jetpack Compose / Material 3 で作るAndroid向けギター練習ツ�
 - 2列カタログで押さえ方を常時表示
 - オープン/ミュート、指番号、バレー表示
 
+### ChordWiki Viewer
+
+- ChordWiki内を曲名/アーティストで検索
+- WebViewを使わず、公開されているChordProソースを必要時だけ取得
+- コードを歌詞の直上に配置したネイティブCompose表示
+- 曲内で使うコードの押さえ方を横スクロール一覧で表示
+- 既存の192コードと一致する場合はオープン/ミュート、指番号、バレーも表示
+- 未登録の複雑なコードは譜面上のコード名を保持し、勝手に別コードへ置換しない
+- Key / BPMがChordPro内にある場合はヘッダーに表示
+- 元のChordWikiページへのリンクを保持
+
 ### 指板
 
 - 0〜24フレット
@@ -77,11 +88,15 @@ Kotlin + Jetpack Compose / Material 3 で作るAndroid向けギター練習ツ�
   - 結果には元データへのリンクを残します
 - **ChordPro**
   - ユーザー自身が作成した、または利用許諾のあるコード譜をimport
-- **U-FRET / ChordWiki**
-  - アプリ内に無断複製せず、該当曲を探す外部リンクとして扱います
+- **ChordWiki**
+  - 専用Viewerからサイト内検索し、選択した曲だけChordProソースをオンデマンド取得します
+  - WebViewではなく、アプリ側でコード位置を保ったままCompose描画します
+  - 元ページURLを保持します
+- **U-FRET**
+  - 練習画面では該当曲を探す外部リンクとして扱います
 
-公開サイトのコード譜を一括スクレイピングして再配布する設計にはしていません。
-将来、利用許諾のあるChord Providerを追加できるよう、曲メタデータ・練習進行・押さえ方を分離しています。
+ChordWiki全体のミラーや一括収集は行わず、ユーザーが開いた譜面だけを都度取得する設計です。
+曲メタデータ・コード譜・練習進行・押さえ方は分離しています。
 
 ## GetSongBPM
 
@@ -140,6 +155,15 @@ practice/
   PracticeUiState.kt
   PracticeViewModel.kt
   PracticeScreen.kt
+
+chordwiki/
+  ChordWikiModels.kt
+  ChordWikiParser.kt
+  ChordWikiClient.kt
+  ChordWikiViewModel.kt
+
+ui/chordwiki/
+  ChordWikiScreen.kt
 
 song/
   SongCatalog.kt

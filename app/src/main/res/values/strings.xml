@@ -5,6 +5,7 @@
     <string name="tab_metronome">メトロノーム</string>
     <string name="tab_tuner">チューナー</string>
     <string name="tab_chords">コード</string>
+    <string name="tab_chordwiki">譜面</string>
     <string name="tab_fretboard">指板</string>
     <string name="tab_practice">練習</string>
 
@@ -93,6 +94,17 @@
     <string name="pause">一時停止</string>
     <string name="sync_backing_track">音源位置とコード進行を同期</string>
     <string name="sync_offset_seconds">前奏オフセット %1$.1f秒</string>
+
+    <string name="chordwiki_description">ChordWikiを検索し、WebViewを使わずコード譜を読みやすく表示します。</string>
+    <string name="chordwiki_loading_song">コード譜を読み込み中…</string>
+    <string name="chordwiki_no_results">該当する曲が見つかりませんでした。</string>
+    <string name="chordwiki_source">元ページ</string>
+    <string name="chordwiki_key">Key %1$s</string>
+    <string name="chordwiki_bpm">BPM %1$d</string>
+    <string name="chordwiki_used_chords">使用コード / 押さえ方</string>
+    <string name="chordwiki_chart">コード譜</string>
+    <string name="chordwiki_shape_unavailable">押さえ方未登録</string>
+    <string name="back">戻る</string>
 
     <string name="highlight_note">強調する音</string>
     <string name="fretboard_footer">0〜12フレット · Standard tuning</string>
