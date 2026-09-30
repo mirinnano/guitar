@@ -440,13 +440,19 @@ struct ChordWikiViewerView:
 
             if let status =
                 model.syncStatus {
-                Text(
-                    syncPrecisionText(
-                        status.precision
-                    )
-                )
-                .foregroundStyle(
-                    .secondary
+                MacStatusPill(
+                    text:
+                        syncPrecisionText(
+                            status.precision
+                        ),
+                    systemImage:
+                        status.anchorCount >= 3
+                        ? "point.3.connected.trianglepath.dotted"
+                        : "scope",
+                    role:
+                        status.anchorCount >= 2
+                        ? .success
+                        : .neutral
                 )
 
                 if status.anchorCount >= 2 {
@@ -457,6 +463,10 @@ struct ChordWikiViewerView:
                             status.localBPM
                         )
                     )
+                    .font(
+                        .caption
+                            .monospacedDigit()
+                    )
                     .foregroundStyle(
                         .secondary
                     )
@@ -466,14 +476,12 @@ struct ChordWikiViewerView:
             Spacer()
 
             if model.calibrationMode {
-                Label(
-                    "コードをクリックして同期アンカーを追加",
+                MacStatusPill(
+                    text:
+                        "コードをクリックして同期アンカーを追加",
                     systemImage:
-                        "scope"
-                )
-                .foregroundStyle(
-                    Color
-                        .accentColor
+                        "scope",
+                    role: .warning
                 )
             }
         }
