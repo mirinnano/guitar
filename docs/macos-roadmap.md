@@ -321,13 +321,13 @@ First keep the algorithms well specified and tested on both platforms. Code shar
 
 ## Milestones
 
-### M0 — SwiftUI shell
+### M0 — SwiftUI shell ✅ started
 
-- macOS target/project
-- SwiftUI NavigationSplitView
-- macOS-native toolbar / commands
-- persistent app settings
-- resize-aware layout
+- SwiftPM-based native macOS executable packaged as `.app`
+- SwiftUI `NavigationSplitView`
+- resize-aware desktop layout
+- ad-hoc signed CI artifact
+- microphone/audio-input entitlement
 
 ### M1 — Android feature parity
 
@@ -339,12 +339,13 @@ First keep the algorithms well specified and tested on both platforms. Code shar
 - fretboard
 - practice
 
-### M2 — Audio Interface MVP
+### M2 — Audio Interface MVP 🚧 in progress
 
-- AVAudioEngine input
-- input level
+- AVAudioEngine input ✅
+- input level / clipping indication ✅
+- input channel selection ✅
+- real-time chord-content detection ✅ first implementation
 - tuner from interface
-- input channel handling
 - disconnect/reconnect behavior
 
 ### M3 — Timing Practice
@@ -355,8 +356,11 @@ First keep the algorithms well specified and tested on both platforms. Code shar
 - early/late feedback
 - session statistics
 
-### M4 — Chord-follow Practice
+### M4 — Chord-follow Practice 🚧 foundation implemented
 
+- 12-class chroma extraction ✅
+- major/minor/5/7/maj7/m7/dim/aug/sus2/sus4 template matching ✅
+- multi-frame stabilization ✅
 - onset + pitch-class analysis
 - expected chord comparison
 - current chord follow mode
