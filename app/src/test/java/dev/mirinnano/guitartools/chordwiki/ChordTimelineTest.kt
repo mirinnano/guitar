@@ -80,6 +80,28 @@ class ChordTimelineTest {
     }
 
     @Test
+    fun finalChordStopsAtItsAssignedEnd() {
+        val song =
+            ChordWikiParser.parse(
+                source =
+                    """
+                    [C]hello
+                    lyrics only
+                    """.trimIndent(),
+                fallbackTitle = "Test",
+                sourceUrl = "https://example.com"
+            )
+
+        val timeline =
+            ChordTimelineBuilder.build(song)
+
+        assertEquals(
+            null,
+            timeline.activeEvent(5f)
+        )
+    }
+
+    @Test
     fun usesSongMeterByDefault() {
         val song =
             ChordWikiParser.parse(
