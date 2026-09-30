@@ -1,7 +1,8 @@
 import Foundation
 
 public enum AccidentalPreference:
-    Sendable {
+    Sendable,
+    Hashable {
     case sharps
     case flats
 }
@@ -683,7 +684,8 @@ public enum GuitarScaleType:
     String,
     CaseIterable,
     Identifiable,
-    Sendable {
+    Sendable,
+    Hashable {
 
     case major = "Major"
     case naturalMinor = "Minor"
@@ -826,7 +828,8 @@ public enum GuitarChordQuality:
     String,
     CaseIterable,
     Identifiable,
-    Sendable {
+    Sendable,
+    Hashable {
 
     case major = ""
     case minor = "m"
