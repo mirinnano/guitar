@@ -1,5 +1,6 @@
 package dev.mirinnano.guitartools.ui.chordwiki
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,6 +80,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.mirinnano.guitartools.R
 import dev.mirinnano.guitartools.audio.ScreenOffMetronomePlayer
+import dev.mirinnano.guitartools.chordwiki.ChordSyncAnchor
+import dev.mirinnano.guitartools.chordwiki.ChordSyncStore
 import dev.mirinnano.guitartools.chordwiki.ChordTimeline
 import dev.mirinnano.guitartools.chordwiki.ChordWikiLine
 import dev.mirinnano.guitartools.chordwiki.ChordWikiLineType
@@ -112,6 +115,10 @@ fun ChordWikiScreen(
                     return ChordWikiViewModel(
                         metronome =
                             ScreenOffMetronomePlayer(
+                                context.applicationContext
+                            ),
+                        syncStore =
+                            ChordSyncStore(
                                 context.applicationContext
                             )
                     ) as T
@@ -165,7 +172,19 @@ fun ChordWikiScreen(
                 onYoutubeProgress =
                     viewModel::onYoutubeProgress,
                 onYoutubeUnavailable =
-                    viewModel::onYoutubeUnavailable
+                    viewModel::onYoutubeUnavailable,
+                onCalibrationMode =
+                    viewModel::setCalibrationMode,
+                onAddSyncAnchor =
+                    viewModel::addSyncAnchor,
+                onNudgeSyncAnchor =
+                    viewModel::nudgeSyncAnchor,
+                onRemoveSyncAnchor =
+                    viewModel::removeSyncAnchor,
+                onClearSyncAnchors =
+                    viewModel::clearSyncAnchors,
+                onVideoPositionForBeat =
+                    viewModel::videoPositionForBeat
             )
         }
 
@@ -524,9 +543,21 @@ private fun ChordWikiSongViewer(
         (
             Long,
             Long,
-            Boolean
+            Boolean,
+            Float
         ) -> Unit,
-    onYoutubeUnavailable: () -> Unit
+    onYoutubeUnavailable: () -> Unit,
+    onCalibrationMode: (Boolean) -> Unit,
+    onAddSyncAnchor: (TimedChordEvent) -> Unit,
+    onNudgeSyncAnchor:
+        (
+            Float,
+            Long
+        ) -> Unit,
+    onRemoveSyncAnchor: (Float) -> Unit,
+    onClearSyncAnchors: () -> Unit,
+    onVideoPositionForBeat:
+        (Float) -> Long
 ) {
     val song =
         state.selectedSong
@@ -570,6 +601,7 @@ private fun ChordWikiSongViewer(
     ) {
         if (
             !state.autoScroll ||
+            state.calibrationMode ||
             timeline == null ||
             (
                 !state.isPlaying &&
@@ -690,6 +722,22 @@ private fun ChordWikiSongViewer(
                 }
 
             if (
+                song.youtubeVideoId != null
+            ) {
+                ChordSyncCalibrationCard(
+                    state = state,
+                    onCalibrationMode =
+                        onCalibrationMode,
+                    onNudgeAnchor =
+                        onNudgeSyncAnchor,
+                    onRemoveAnchor =
+                        onRemoveSyncAnchor,
+                    onClearAnchors =
+                        onClearSyncAnchors
+                )
+            }
+
+            if (
                 song.chordSymbols
                     .isNotEmpty()
             ) {
@@ -717,6 +765,20 @@ private fun ChordWikiSongViewer(
                             activeEvent
                                 ?.lineIndex ==
                                 index,
+                        timedEvents =
+                            timeline
+                                ?.events
+                                ?.filter {
+                                    it.lineIndex ==
+                                        index
+                                }
+                                .orEmpty(),
+                        syncAnchors =
+                            state.syncAnchors,
+                        calibrationMode =
+                            state.calibrationMode,
+                        onAddSyncAnchor =
+                            onAddSyncAnchor,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -754,6 +816,8 @@ private fun ChordWikiSongViewer(
                 onYoutubeSync,
             onYoutubeOffset =
                 onYoutubeOffset,
+            onVideoPositionForBeat =
+                onVideoPositionForBeat,
             modifier = Modifier
                 .align(
                     Alignment.BottomCenter
@@ -939,7 +1003,8 @@ private fun YouTubePlayerCard(
         (
             Long,
             Long,
-            Boolean
+            Boolean,
+            Float
         ) -> Unit,
     onUnavailable: () -> Unit
 ) {
@@ -1156,6 +1221,8 @@ private fun TransportDock(
     onMetronome: (Boolean) -> Unit,
     onYoutubeSync: (Boolean) -> Unit,
     onYoutubeOffset: (Long) -> Unit,
+    onVideoPositionForBeat:
+        (Float) -> Long,
     modifier: Modifier = Modifier
 ) {
     if (
@@ -1180,15 +1247,28 @@ private fun TransportDock(
             ?: state.currentBeat
 
     val chartPositionMs =
-        timeline.positionMsForBeat(
-            displayedBeat,
-            state.bpm
-        )
+        if (
+            state.youtubeSyncEnabled
+        ) {
+            state.youtubePositionMs
+        } else {
+            timeline.positionMsForBeat(
+                displayedBeat,
+                state.bpm
+            )
+        }
 
     val chartDurationMs =
-        timeline.durationMs(
-            state.bpm
-        )
+        if (
+            state.youtubeSyncEnabled &&
+            state.youtubeDurationMs > 0L
+        ) {
+            state.youtubeDurationMs
+        } else {
+            timeline.durationMs(
+                state.bpm
+            )
+        }
 
     val activeChord =
         timeline
@@ -1287,12 +1367,9 @@ private fun TransportDock(
                         state.youtubeSyncEnabled
                     ) {
                         val targetMs =
-                            state.youtubeOffsetMs +
-                                timeline
-                                    .positionMsForBeat(
-                                        target,
-                                        state.bpm
-                                    )
+                            onVideoPositionForBeat(
+                                target
+                            )
 
                         youtubeController
                             .seekTo(targetMs)
@@ -1671,6 +1748,13 @@ private fun ChordWikiChartLine(
     activeEvent:
         TimedChordEvent?,
     isActiveLine: Boolean,
+    timedEvents:
+        List<TimedChordEvent>,
+    syncAnchors:
+        List<ChordSyncAnchor>,
+    calibrationMode: Boolean,
+    onAddSyncAnchor:
+        (TimedChordEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
     when (line.type) {
@@ -1795,6 +1879,21 @@ private fun ChordWikiChartLine(
                                         .segmentIndex ==
                                     segmentIndex
 
+                            val timedEvent =
+                                timedEvents
+                                    .firstOrNull {
+                                        it.segmentIndex ==
+                                            segmentIndex
+                                    }
+
+                            val anchored =
+                                syncAnchors.any {
+                                    it.lineIndex ==
+                                        lineIndex &&
+                                        it.segmentIndex ==
+                                            segmentIndex
+                                }
+
                             Column(
                                 modifier =
                                     Modifier
@@ -1810,6 +1909,18 @@ private fun ChordWikiChartLine(
                                     null
                                 ) {
                                     Surface(
+                                        modifier =
+                                            Modifier.clickable(
+                                                enabled =
+                                                    calibrationMode &&
+                                                        timedEvent !=
+                                                        null
+                                            ) {
+                                                timedEvent
+                                                    ?.let(
+                                                        onAddSyncAnchor
+                                                    )
+                                            },
                                         color =
                                             if (
                                                 activeChord
@@ -1817,6 +1928,12 @@ private fun ChordWikiChartLine(
                                                 MaterialTheme
                                                     .colorScheme
                                                     .primary
+                                            } else if (
+                                                anchored
+                                            ) {
+                                                MaterialTheme
+                                                    .colorScheme
+                                                    .tertiaryContainer
                                             } else {
                                                 Color.Transparent
                                             },
@@ -1854,6 +1971,12 @@ private fun ChordWikiChartLine(
                                                     MaterialTheme
                                                         .colorScheme
                                                         .onPrimary
+                                                } else if (
+                                                    anchored
+                                                ) {
+                                                    MaterialTheme
+                                                        .colorScheme
+                                                        .onTertiaryContainer
                                                 } else {
                                                     MaterialTheme
                                                         .colorScheme
