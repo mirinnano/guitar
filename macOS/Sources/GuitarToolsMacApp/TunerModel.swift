@@ -76,15 +76,35 @@ final class TunerModel:
                     return
                 }
 
-                self.analysisQueue
-                    .async {
-                        self.process(
-                            samples:
-                                samples,
-                            sampleRate:
-                                sampleRate
-                        )
-                    }
+                Task {
+                    @MainActor in
+
+                    let sensitivity =
+                        self.sensitivity
+
+                    self.analysisQueue
+                        .async {
+                            Self.processFrame(
+                                samples:
+                                    samples,
+                                sampleRate:
+                                    sampleRate,
+                                sensitivity:
+                                    sensitivity
+                            ) {
+                                [weak self]
+                                frequency in
+
+                                Task {
+                                    @MainActor in
+                                    self?
+                                        .acceptFrequency(
+                                            frequency
+                                        )
+                                }
+                            }
+                        }
+                }
             }
     }
 
@@ -161,9 +181,12 @@ final class TunerModel:
         retarget()
     }
 
-    private nonisolated func process(
+    private nonisolated static func processFrame(
         samples: [Float],
-        sampleRate: Double
+        sampleRate: Double,
+        sensitivity: Double,
+        completion:
+            @escaping (Double?) -> Void
     ) {
         let minimumRMS =
             0.025 -
@@ -188,58 +211,59 @@ final class TunerModel:
 
         guard rms >= minimumRMS
         else {
-            Task {
-                @MainActor in
-                self.history
-                    .removeAll()
-                self.reading = nil
-                self.target = nil
-            }
+            completion(nil)
             return
         }
 
-        guard let frequency =
-            detector.detect(
-                samples: samples,
-                sampleRate:
-                    sampleRate
-            )
+        let frequency =
+            YinPitchDetector()
+                .detect(
+                    samples: samples,
+                    sampleRate:
+                        sampleRate
+                )
+
+        completion(frequency)
+    }
+
+    private func acceptFrequency(
+        _ frequency: Double?
+    ) {
+        guard let frequency
         else {
+            history.removeAll()
+            reading = nil
+            target = nil
             return
         }
 
-        Task {
-            @MainActor in
-            self.history.append(
-                frequency
+        history.append(
+            frequency
+        )
+
+        if history.count > 5 {
+            history.removeFirst(
+                history.count - 5
             )
-
-            if self.history.count > 5 {
-                self.history
-                    .removeFirst(
-                        self.history.count -
-                        5
-                    )
-            }
-
-            let sorted =
-                self.history.sorted()
-
-            let median =
-                sorted[
-                    sorted.count / 2
-                ]
-
-            self.reading =
-                GuitarPitchReading
-                    .fromFrequency(
-                        median,
-                        a4Hz:
-                            self.a4Hz
-                    )
-
-            self.retarget()
         }
+
+        let sorted =
+            history.sorted()
+
+        let median =
+            sorted[
+                sorted.count / 2
+            ]
+
+        reading =
+            GuitarPitchReading
+                .fromFrequency(
+                    median,
+                    a4Hz:
+                        a4Hz
+                )
+
+        retarget()
     }
 
     private func retarget() {
