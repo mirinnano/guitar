@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   test-build-package:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v5
