@@ -187,7 +187,7 @@ struct MacMetric: View {
         }
         .padding(12)
         .background(
-            .background.opacity(0.7),
+            Color.secondary.opacity(0.05),
             in:
                 RoundedRectangle(
                     cornerRadius: 10,
