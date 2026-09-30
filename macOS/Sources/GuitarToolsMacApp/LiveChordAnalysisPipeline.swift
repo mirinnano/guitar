@@ -26,7 +26,7 @@ final class LiveChordAnalysisPipeline {
             votesRequired: 3
         )
 
-    private let frameSize = 4_096
+    private let frameSize = 8_192
     private let hopSize = 2_048
 
     var onResult: ResultHandler?
