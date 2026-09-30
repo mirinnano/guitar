@@ -329,7 +329,7 @@ First keep the algorithms well specified and tested on both platforms. Code shar
 - ad-hoc signed CI artifact
 - microphone/audio-input entitlement
 
-### M1 — Android feature parity
+### M1 — Android feature parity 🚧
 
 - metronome
 - tuner
@@ -348,23 +348,24 @@ First keep the algorithms well specified and tested on both platforms. Code shar
 - tuner from interface
 - disconnect/reconnect behavior
 
-### M3 — Timing Practice
+### M3 — Timing Practice ✅ first implementation
 
-- onset detection
-- expected vs actual timing
-- latency compensation
-- early/late feedback
-- session statistics
+- energy-onset detection ✅
+- AVAudioTime host-time timestamping ✅
+- expected vs actual timing ✅
+- manual input-latency compensation ✅
+- early / on-time / late feedback ✅
+- session statistics ✅
 
 ### M4 — Chord-follow Practice 🚧 foundation implemented
 
 - 12-class chroma extraction ✅
 - major/minor/5/7/maj7/m7/dim/aug/sus2/sus4 template matching ✅
 - multi-frame stabilization ✅
-- onset + pitch-class analysis
-- expected chord comparison
-- current chord follow mode
-- timing and fingering/harmony feedback
+- onset + pitch-class analysis ✅
+- expected ChordWiki chord comparison ✅
+- current chord follow mode ✅
+- timing and harmony feedback as separate scores ✅
 
 ### M5 — Sync assistance
 
