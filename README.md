@@ -1,6 +1,6 @@
 # Guitar Tools
 
-Kotlin + Jetpack Compose / Material 3 で作るAndroid向けギター練習ツールです。
+Android版（Kotlin + Jetpack Compose / Material 3）を中心に開発しているギター練習ツールです。macOS版はSwiftUIで、Android版の機能を引き継ぎつつオーディオインターフェース入力を活用するネイティブアプリとして開発予定です。
 
 ## 機能
 
@@ -86,6 +86,22 @@ Kotlin + Jetpack Compose / Material 3 で作るAndroid向けギター練習ツ�
 - BPM/キー/拍子メタデータ取得
 - バッキング音源のバックグラウンド再生
 - 音源再生位置 + BPMからコード位置を同期
+
+## macOS 開発目標
+
+macOS版は **SwiftUI** で開発し、Android版の延長線に置きます。
+
+- Android版のメトロノーム / チューナー / コード / ChordWiki / 指板 / 練習機能をMacへ展開
+- デスクトップ向けのNavigationSplitView・リサイズ可能な譜面レイアウト
+- オーディオインターフェースからギター入力
+- AVAudioEngineを第一候補に、入力レベル・チューナー・オンセット検出へ利用
+- 高精度同期アンカー / piecewise time-warpをMacでも利用
+- 将来的に「弾いた瞬間が何ms早い/遅いか」を表示するタイミング練習
+- 必要に応じてコード内容の判定も追加
+
+**DAW化はしません。** 録音編集、マルチトラック、ミキサー、プラグインホスト、アンプシム、IR、MIDIシーケンサ等は対象外です。オーディオインターフェースは主に練習解析の入力源として扱います。
+
+詳細: `docs/macos-roadmap.md`
 
 ## 楽曲データ
 
