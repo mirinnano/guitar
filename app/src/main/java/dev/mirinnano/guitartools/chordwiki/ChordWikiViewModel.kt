@@ -514,6 +514,10 @@ class ChordWikiViewModel(
             return
         }
 
+        if (enabled) {
+            stopInternalTransportOnly()
+        }
+
         _uiState.update {
             it.copy(
                 calibrationMode = enabled,
@@ -528,6 +532,12 @@ class ChordWikiViewModel(
                         ChordWikiPlaybackSource.YOUTUBE
                     } else {
                         it.playbackSource
+                    },
+                isPlaying =
+                    if (enabled) {
+                        state.youtubePlaying
+                    } else {
+                        it.isPlaying
                     },
                 syncNotice =
                     if (enabled) {
@@ -660,9 +670,26 @@ class ChordWikiViewModel(
             )
         }
 
+        val changed =
+            state.copy(
+                syncAnchors = anchors
+            )
+
         _uiState.update {
-            it.copy(
-                syncAnchors = anchors,
+            changed.copy(
+                currentBeat =
+                    if (
+                        changed.youtubeSyncEnabled
+                    ) {
+                        youtubeBeatForPosition(
+                            estimatedYoutubePositionMs(
+                                changed
+                            ),
+                            changed
+                        )
+                    } else {
+                        changed.currentBeat
+                    },
                 syncNotice =
                     "同期アンカーを削除しました"
             )
@@ -777,9 +804,26 @@ class ChordWikiViewModel(
 
         syncStore?.clear(song)
 
+        val changed =
+            state.copy(
+                syncAnchors = emptyList()
+            )
+
         _uiState.update {
-            it.copy(
-                syncAnchors = emptyList(),
+            changed.copy(
+                currentBeat =
+                    if (
+                        changed.youtubeSyncEnabled
+                    ) {
+                        youtubeBeatForPosition(
+                            estimatedYoutubePositionMs(
+                                changed
+                            ),
+                            changed
+                        )
+                    } else {
+                        changed.currentBeat
+                    },
                 syncNotice =
                     "高精度同期をリセットしました。BPM + 開始オフセット同期に戻ります"
             )
