@@ -40,28 +40,53 @@ final class AudioInputModel:
     @Published private(set)
     var permissionDenied = false
 
+    var onOnset:
+        ((AudioOnset) -> Void)?
+
+    var onStableChord:
+        ((String, Double) -> Void)?
+
     private let engine =
         AVAudioEngine()
 
     private let pipeline =
         LiveChordAnalysisPipeline()
 
+    private var tapInstalled = false
+
     init() {
         pipeline.onResult = {
             [weak self]
             estimate,
             stableChord,
-            levelDBFS in
+            levelDBFS,
+            timestamp in
 
             guard let self else {
                 return
             }
 
             self.estimate = estimate
-            self.stableChord = stableChord
-            self.levelDBFS = levelDBFS
+            self.stableChord =
+                stableChord
+            self.levelDBFS =
+                levelDBFS
             self.clipping =
                 levelDBFS > -0.4
+
+            if let stableChord {
+                self.onStableChord?(
+                    stableChord,
+                    timestamp
+                )
+            }
+        }
+
+        pipeline.onOnset = {
+            [weak self]
+            onset in
+
+            self?.onOnset?(onset)
         }
     }
 
@@ -91,20 +116,23 @@ final class AudioInputModel:
                     [weak self]
                     granted in
 
-                    DispatchQueue.main.async {
-                        guard let self else {
-                            return
-                        }
+                    DispatchQueue
+                        .main
+                        .async {
+                            guard let self
+                            else {
+                                return
+                            }
 
-                        if granted {
-                            self.startEngine()
-                        } else {
-                            self.permissionDenied =
-                                true
-                            self.errorMessage =
-                                "マイク/オーディオ入力へのアクセスが許可されていません。システム設定 > プライバシーとセキュリティ > マイクで許可してください。"
+                            if granted {
+                                self.startEngine()
+                            } else {
+                                self.permissionDenied =
+                                    true
+                                self.errorMessage =
+                                    "マイク/オーディオ入力へのアクセスが許可されていません。システム設定 > プライバシーとセキュリティ > マイクで許可してください。"
+                            }
                         }
-                    }
                 }
 
         default:
@@ -115,14 +143,21 @@ final class AudioInputModel:
     }
 
     func stop() {
-        guard isRunning else {
+        guard
+            isRunning ||
+            tapInstalled
+        else {
             return
         }
 
-        engine.inputNode
-            .removeTap(
-                onBus: 0
-            )
+        if tapInstalled {
+            engine.inputNode
+                .removeTap(
+                    onBus: 0
+                )
+            tapInstalled = false
+        }
+
         engine.stop()
         pipeline.reset()
 
@@ -169,7 +204,8 @@ final class AudioInputModel:
                     channelCount - 1
                 )
 
-            selectedChannel = channel
+            selectedChannel =
+                channel
             availableChannels =
                 channelCount
             sampleRate =
@@ -182,7 +218,7 @@ final class AudioInputModel:
             ) {
                 [weak self]
                 audioBuffer,
-                _ in
+                when in
 
                 guard
                     let self,
@@ -195,10 +231,12 @@ final class AudioInputModel:
 
                 let frameCount =
                     Int(
-                        audioBuffer.frameLength
+                        audioBuffer
+                            .frameLength
                     )
 
-                guard frameCount > 0 else {
+                guard frameCount > 0
+                else {
                     return
                 }
 
@@ -213,48 +251,75 @@ final class AudioInputModel:
                         )
                     )
 
+                let startTime:
+                    Double
+
+                if when
+                    .isHostTimeValid {
+                    startTime =
+                        AVAudioTime
+                            .seconds(
+                                forHostTime:
+                                    when.hostTime
+                            )
+                } else {
+                    startTime =
+                        ProcessInfo
+                            .processInfo
+                            .systemUptime -
+                        Double(frameCount) /
+                        format.sampleRate
+                }
+
                 self.pipeline.ingest(
                     samples: samples,
                     sampleRate:
-                        format.sampleRate
+                        format.sampleRate,
+                    bufferStartTimeSeconds:
+                        startTime
                 )
             }
+
+            tapInstalled = true
 
             engine.prepare()
             try engine.start()
 
-            permissionDenied = false
+            permissionDenied =
+                false
             isRunning = true
+
             inputLabel =
                 channelCount > 1
-                ? "macOS Default Input · Ch (channel + 1)"
+                ? "macOS Default Input · Ch \(channel + 1)"
                 : "macOS Default Input · Mono"
 
         } catch {
-            runCatchingStopTap()
+            if tapInstalled {
+                engine.inputNode
+                    .removeTap(
+                        onBus: 0
+                    )
+                tapInstalled = false
+            }
 
+            engine.stop()
             isRunning = false
+
             errorMessage =
-                "オーディオ入力を開始できませんでした: (error.localizedDescription)"
+                "オーディオ入力を開始できませんでした: \(error.localizedDescription)"
         }
     }
 
-    private func runCatchingStopTap() {
-        engine.inputNode
-            .removeTap(
-                onBus: 0
-            )
-        engine.stop()
-    }
-
     deinit {
-        if isRunning {
+        if tapInstalled {
             engine.inputNode
                 .removeTap(
                     onBus: 0
                 )
-            engine.stop()
         }
+
+        engine.stop()
     }
 }
 
@@ -263,7 +328,8 @@ private enum AudioInputError:
 
     case noInputChannels
 
-    var errorDescription: String? {
+    var errorDescription:
+        String? {
         switch self {
         case .noInputChannels:
             "使用可能なオーディオ入力チャンネルがありません。"
