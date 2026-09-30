@@ -250,8 +250,23 @@ class ChordWikiViewModel(
             reanchorInternalTransport()
         }
 
-        _uiState.update {
-            it.copy(bpm = bpm)
+        _uiState.update { state ->
+            val withBpm =
+                state.copy(bpm = bpm)
+
+            withBpm.copy(
+                currentBeat =
+                    if (
+                        withBpm.youtubeSyncEnabled
+                    ) {
+                        youtubeBeatForPosition(
+                            withBpm.youtubePositionMs,
+                            withBpm
+                        )
+                    } else {
+                        withBpm.currentBeat
+                    }
+            )
         }
 
         if (_uiState.value.isPlaying) {
