@@ -220,11 +220,14 @@ struct TunerView:
                                 )
                             }
                             .buttonStyle(
+                                .bordered
+                            )
+                            .tint(
                                 model
                                     .lockedStringNumber ==
                                 string.stringNumber
-                                ? .borderedProminent
-                                : .bordered
+                                ? Color.accentColor
+                                : Color.secondary
                             )
                             .contextMenu {
                                 Button(
