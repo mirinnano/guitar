@@ -381,10 +381,10 @@ public enum ChordChartParser {
         _ source: String
     ) -> String? {
         let patterns = [
-            #"https?://(?:www.)?youtube.com/watch?[^s}]*?v=([A-Za-z0-9_-]{11})"#,
-            #"https?://youtu.be/([A-Za-z0-9_-]{11})"#,
-            #"https?://(?:www.)?youtube.com/embed/([A-Za-z0-9_-]{11})"#,
-            #"{(?:youtube|yt)s*:s*([A-Za-z0-9_-]{11})s*}"#
+            #"https?://(?:www\.)?youtube\.com/watch\?[^\s}]*?\bv=([A-Za-z0-9_-]{11})"#,
+            #"https?://youtu\.be/([A-Za-z0-9_-]{11})"#,
+            #"https?://(?:www\.)?youtube\.com/embed/([A-Za-z0-9_-]{11})"#,
+            #"\{(?:youtube|yt)\s*:\s*([A-Za-z0-9_-]{11})\s*\}"#
         ]
 
         for pattern in patterns {
@@ -398,7 +398,8 @@ public enum ChordChartParser {
                 continue
             }
 
-            let ns = source as NSString
+            let ns =
+                source as NSString
 
             if let match =
                 regex.firstMatch(
