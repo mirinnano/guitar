@@ -18,6 +18,25 @@ object ChordWikiParser {
             """(?i)\bBPM\s*[=≒~:]?\s*(\d{2,3})\b"""
         )
 
+    private val meterPattern =
+        Regex("""^\s*(\d{1,2})\s*/\s*(2|4|8|16)\s*$""")
+
+    private val youtubePatterns =
+        listOf(
+            Regex(
+                """(?i)https?://(?:www\.)?youtube\.com/watch\?[^\s}]*?\bv=([A-Za-z0-9_-]{11})"""
+            ),
+            Regex(
+                """(?i)https?://youtu\.be/([A-Za-z0-9_-]{11})"""
+            ),
+            Regex(
+                """(?i)https?://(?:www\.)?youtube\.com/embed/([A-Za-z0-9_-]{11})"""
+            ),
+            Regex(
+                """(?i)\{(?:youtube|yt)\s*:\s*([A-Za-z0-9_-]{11})\s*}"""
+            )
+        )
+
     fun parse(
         source: String,
         fallbackTitle: String,
@@ -27,6 +46,8 @@ object ChordWikiParser {
         var artist = ""
         var key: String? = null
         var bpm: Int? = null
+        var beatsPerBar: Int? = null
+        var beatUnit: Int? = null
 
         val lines = buildList {
             source
@@ -81,6 +102,17 @@ object ChordWikiParser {
                                     }
                             }
 
+                            "time", "meter",
+                            "time_signature" -> {
+                                parseMeter(value)
+                                    ?.let { meter ->
+                                        beatsPerBar =
+                                            meter.first
+                                        beatUnit =
+                                            meter.second
+                                    }
+                            }
+
                             "comment", "c",
                             "comment_italic", "ci" -> {
                                 if (value.isNotBlank()) {
@@ -131,10 +163,25 @@ object ChordWikiParser {
             artist = artist,
             key = key,
             bpm = bpm,
+            beatsPerBar = beatsPerBar,
+            beatUnit = beatUnit,
+            youtubeVideoId =
+                extractYouTubeVideoId(source),
             lines = trimBlankEdges(lines),
             sourceUrl = sourceUrl
         )
     }
+
+    internal fun extractYouTubeVideoId(
+        source: String
+    ): String? =
+        youtubePatterns
+            .firstNotNullOfOrNull {
+                pattern ->
+                pattern.find(source)
+                    ?.groupValues
+                    ?.getOrNull(1)
+            }
 
     private fun parseContentLine(
         line: String
@@ -265,6 +312,30 @@ object ChordWikiParser {
             ?.takeIf {
                 it in 20..400
             }
+
+    private fun parseMeter(
+        value: String
+    ): Pair<Int, Int>? {
+        val match =
+            meterPattern.matchEntire(value)
+                ?: return null
+
+        val beats =
+            match.groupValues[1]
+                .toIntOrNull()
+                ?: return null
+
+        val unit =
+            match.groupValues[2]
+                .toIntOrNull()
+                ?: return null
+
+        if (beats !in 1..12) {
+            return null
+        }
+
+        return beats to unit
+    }
 
     private fun trimBlankEdges(
         source: List<ChordWikiLine>
