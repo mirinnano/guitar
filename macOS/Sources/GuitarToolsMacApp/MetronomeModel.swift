@@ -494,6 +494,17 @@ final class MacMetronomeEngine {
 final class MetronomeModel:
     ObservableObject {
 
+    private let clock:
+        any AudioHostClock
+
+    init(
+        clock:
+            any AudioHostClock =
+            SystemAudioHostClock()
+    ) {
+        self.clock = clock
+    }
+
     @Published
     var bpm = 120
 
@@ -582,9 +593,7 @@ final class MetronomeModel:
         if let tempo =
             tapTempo.tap(
                 timestampSeconds:
-                    ProcessInfo
-                        .processInfo
-                        .systemUptime
+                    clock.nowSeconds()
             ) {
             bpm = tempo
         }
