@@ -16,6 +16,11 @@ struct MetronomeView:
                     alignment: .center,
                     spacing: 22
                 ) {
+                    Button("-5") {
+                        model.changeBpm(-5)
+                    }
+                    .help("5 BPM下げる")
+
                     Button {
                         model.changeBpm(-1)
                     } label: {
@@ -24,6 +29,7 @@ struct MetronomeView:
                                 "minus"
                         )
                     }
+                    .help("1 BPM下げる")
 
                     Text(
                         "\(model.bpm)"
@@ -51,6 +57,12 @@ struct MetronomeView:
                                 "plus"
                         )
                     }
+                    .help("1 BPM上げる")
+
+                    Button("+5") {
+                        model.changeBpm(5)
+                    }
+                    .help("5 BPM上げる")
 
                     Spacer()
 
