@@ -188,9 +188,13 @@ struct ProgressionPracticeView:
 
     private var header:
         some View {
-        HStack {
+        HStack(
+            alignment: .center,
+            spacing: 18
+        ) {
             VStack(
-                alignment: .leading
+                alignment: .leading,
+                spacing: 3
             ) {
                 Text(model.title)
                     .font(
@@ -200,16 +204,33 @@ struct ProgressionPracticeView:
                             )
                     )
 
-                if !model.artist
-                    .isEmpty {
-                    Text(model.artist)
-                        .foregroundStyle(
-                            .secondary
-                        )
-                }
+                Text(
+                    model.artist.isEmpty
+                    ? "コード進行練習"
+                    : model.artist
+                )
+                .font(.callout)
+                .foregroundStyle(
+                    .secondary
+                )
             }
 
             Spacer()
+
+            MacStatusPill(
+                text:
+                    model.isPlaying
+                    ? "Playing"
+                    : "Ready",
+                systemImage:
+                    model.isPlaying
+                    ? "play.fill"
+                    : "circle",
+                role:
+                    model.isPlaying
+                    ? .success
+                    : .neutral
+            )
 
             Stepper(
                 "\(model.bpm) BPM",
@@ -223,6 +244,7 @@ struct ProgressionPracticeView:
                 isOn:
                     $model.autoScroll
             )
+            .toggleStyle(.switch)
         }
         .padding(
             .horizontal,
@@ -230,7 +252,7 @@ struct ProgressionPracticeView:
         )
         .padding(
             .vertical,
-            13
+            14
         )
     }
 
@@ -272,7 +294,7 @@ struct ProgressionPracticeView:
                     )
                     .font(
                         .system(
-                            size: 54,
+                            size: 64,
                             weight: .bold,
                             design:
                                 .rounded
@@ -451,7 +473,7 @@ struct ProgressionPracticeView:
             alignment: .leading,
             spacing: 14
         ) {
-            GroupBox(
+            MacSection(
                 "コード追加"
             ) {
                 VStack(
@@ -506,7 +528,7 @@ struct ProgressionPracticeView:
                 .padding(5)
             }
 
-            GroupBox(
+            MacSection(
                 "Import / Song"
             ) {
                 VStack(
@@ -577,7 +599,7 @@ struct ProgressionPracticeView:
                 .padding(5)
             }
 
-            GroupBox(
+            MacSection(
                 "Backing Track"
             ) {
                 VStack(
