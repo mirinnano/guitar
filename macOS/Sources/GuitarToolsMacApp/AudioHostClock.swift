@@ -10,6 +10,10 @@ protocol AudioHostClock:
     func seconds(
         forHostTime hostTime: UInt64
     ) -> Double
+
+    func hostTime(
+        forSeconds seconds: Double
+    ) -> UInt64
 }
 
 struct SystemAudioHostClock:
@@ -28,6 +32,15 @@ struct SystemAudioHostClock:
         AVAudioTime.seconds(
             forHostTime:
                 hostTime
+        )
+    }
+
+    func hostTime(
+        forSeconds seconds: Double
+    ) -> UInt64 {
+        AVAudioTime.hostTime(
+            forSeconds:
+                seconds
         )
     }
 }
