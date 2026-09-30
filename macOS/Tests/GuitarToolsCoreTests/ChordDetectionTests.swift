@@ -4,7 +4,7 @@ import XCTest
 final class ChordDetectionTests: XCTestCase {
 
     private let sampleRate = 48_000.0
-    private let frameCount = 4_096
+    private let frameCount = 8_192
 
     func testDetectsCMajor() {
         let detector = SpectralChordDetector()
@@ -26,6 +26,30 @@ final class ChordDetectionTests: XCTestCase {
         XCTAssertEqual(
             estimate?.name,
             "C"
+        )
+    }
+
+    func testDetectsCMajorSevenWhenSeventhIsPresent() {
+        let detector = SpectralChordDetector()
+
+        let samples = composite(
+            frequencies: [
+                261.6256,
+                329.6276,
+                391.9954,
+                493.8833
+            ]
+        )
+
+        let estimate =
+            detector.analyze(
+                samples: samples,
+                sampleRate: sampleRate
+            )
+
+        XCTAssertEqual(
+            estimate?.name,
+            "Cmaj7"
         )
     }
 
