@@ -213,7 +213,8 @@ object ChordWikiParser {
     ) {
         if (
             chord == null &&
-            segments.lastOrNull()?.chord == null
+            segments.isNotEmpty() &&
+            segments.last().chord == null
         ) {
             val previous = segments.removeAt(
                 segments.lastIndex
