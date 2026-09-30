@@ -7,8 +7,26 @@ struct MetronomeView:
     private var model =
         MetronomeModel()
 
+    @StateObject
+    private var outputRoute =
+        AudioOutputRouteModel()
+
     var body: some View {
         Form {
+            if outputRoute
+                .isBluetooth {
+                Section {
+                    Label(
+                        "Bluetooth出力は音声遅延が大きいため、クリックと実際の発音にズレが出ることがあります。有線またはオーディオインターフェース出力を推奨します。",
+                        systemImage:
+                            "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(
+                        .orange
+                    )
+                }
+            }
+
             Section(
                 "Tempo"
             ) {
