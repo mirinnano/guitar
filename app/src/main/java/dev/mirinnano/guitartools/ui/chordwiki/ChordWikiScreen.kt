@@ -570,7 +570,11 @@ private fun ChordWikiSongViewer(
     ) {
         if (
             !state.autoScroll ||
-            timeline == null
+            timeline == null ||
+            (
+                !state.isPlaying &&
+                state.currentBeat <= 0f
+            )
         ) {
             return@LaunchedEffect
         }
@@ -1307,7 +1311,7 @@ private fun TransportDock(
                 modifier =
                     Modifier.fillMaxWidth(),
                 horizontalArrangement =
-                    Arrangement.spacedBy(8.dp),
+                    Arrangement.spacedBy(10.dp),
                 verticalAlignment =
                     Alignment.CenterVertically
             ) {
@@ -1354,74 +1358,89 @@ private fun TransportDock(
                     )
                 }
 
-                FilterChip(
-                    selected =
-                        state.metronomeEnabled,
-                    onClick = {
-                        onMetronome(
-                            !state.metronomeEnabled
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector =
-                                Icons.Rounded.GraphicEq,
-                            contentDescription = null
-                        )
-                    },
-                    label = {
-                        Text(
-                            stringResource(
-                                R.string.chordwiki_metronome
-                            )
-                        )
-                    }
-                )
-
-                FilterChip(
-                    selected =
-                        state.autoScroll,
-                    onClick = {
-                        onAutoScroll(
-                            !state.autoScroll
-                        )
-                    },
-                    label = {
-                        Text(
-                            stringResource(
-                                R.string.auto_scroll
-                            )
-                        )
-                    }
-                )
-
-                if (
-                    state.selectedSong
-                        ?.youtubeVideoId !=
-                        null
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(
+                            rememberScrollState()
+                        ),
+                    horizontalArrangement =
+                        Arrangement.spacedBy(8.dp),
+                    verticalAlignment =
+                        Alignment.CenterVertically
                 ) {
                     FilterChip(
                         selected =
-                            state.youtubeSyncEnabled,
+                            state.metronomeEnabled,
                         onClick = {
-                            onYoutubeSync(
-                                !state.youtubeSyncEnabled
+                            onMetronome(
+                                !state.metronomeEnabled
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector =
+                                    Icons.Rounded.GraphicEq,
+                                contentDescription = null
                             )
                         },
                         label = {
                             Text(
                                 stringResource(
-                                    R.string.chordwiki_sync
+                                    R.string.chordwiki_metronome
                                 )
                             )
                         }
                     )
+
+                    FilterChip(
+                        selected =
+                            state.autoScroll,
+                        onClick = {
+                            onAutoScroll(
+                                !state.autoScroll
+                            )
+                        },
+                        label = {
+                            Text(
+                                stringResource(
+                                    R.string.auto_scroll
+                                )
+                            )
+                        }
+                    )
+
+                    if (
+                        state.selectedSong
+                            ?.youtubeVideoId !=
+                            null
+                    ) {
+                        FilterChip(
+                            selected =
+                                state.youtubeSyncEnabled,
+                            onClick = {
+                                onYoutubeSync(
+                                    !state.youtubeSyncEnabled
+                                )
+                            },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        R.string.chordwiki_sync
+                                    )
+                                )
+                            }
+                        )
+                    }
                 }
             }
 
             Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(
+                        rememberScrollState()
+                    ),
                 horizontalArrangement =
                     Arrangement.spacedBy(8.dp),
                 verticalAlignment =
@@ -1490,10 +1509,6 @@ private fun TransportDock(
                 if (
                     state.youtubeSyncEnabled
                 ) {
-                    Spacer(
-                        Modifier.weight(1f)
-                    )
-
                     OutlinedIconButton(
                         onClick = {
                             onYoutubeOffset(
