@@ -54,7 +54,31 @@ struct FretboardView:
         VStack(
             spacing: 0
         ) {
-            controls
+            VStack(
+                alignment: .leading,
+                spacing: 16
+            ) {
+                MacPageHeader(
+                    "指板",
+                    subtitle:
+                        "音、スケール、コードを0〜24フレットで可視化"
+                ) {
+                    MacStatusPill(
+                        text:
+                            leftHanded
+                            ? "Left-handed"
+                            : tuning.name,
+                        systemImage:
+                            leftHanded
+                            ? "hand.raised"
+                            : "guitars",
+                        role: .neutral
+                    )
+                }
+
+                controls
+            }
+            .padding(22)
 
             Divider()
 
@@ -64,9 +88,13 @@ struct FretboardView:
                     .vertical
                 ]
             ) {
-                fretboard
-                    .padding(22)
+                fretboardCanvas
+                    .padding(24)
             }
+            .background(
+                Color.secondary
+                    .opacity(0.025)
+            )
         }
         .navigationTitle(
             "指板"
@@ -75,32 +103,92 @@ struct FretboardView:
 
     private var controls:
         some View {
-        HStack(
-            spacing: 12
+
+        MacSection(
+            "表示"
         ) {
-            Picker(
-                "Tuning",
-                selection:
-                    $tuning
-            ) {
-                ForEach(
-                    GuitarTuning.presets
+            ViewThatFits {
+                HStack(
+                    spacing: 14
                 ) {
-                    Text($0.name)
-                        .tag($0)
+                    controlContent
+                }
+
+                VStack(
+                    alignment: .leading,
+                    spacing: 12
+                ) {
+                    controlContent
                 }
             }
-            .frame(
-                width: 170
-            )
+        }
+    }
 
+    @ViewBuilder
+    private var controlContent:
+        some View {
+
+        Picker(
+            "Tuning",
+            selection:
+                $tuning
+        ) {
+            ForEach(
+                GuitarTuning.presets
+            ) {
+                Text($0.name)
+                    .tag($0)
+            }
+        }
+        .frame(
+            minWidth: 160
+        )
+
+        Picker(
+            "Mode",
+            selection:
+                $mode
+        ) {
+            ForEach(
+                FretboardMode
+                    .allCases
+            ) {
+                Text($0.rawValue)
+                    .tag($0)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(
+            minWidth: 220
+        )
+
+        Picker(
+            "Root",
+            selection:
+                $root
+        ) {
+            ForEach(
+                GuitarNote
+                    .allCases
+            ) {
+                Text(
+                    $0.displayName
+                )
+                .tag($0)
+            }
+        }
+        .frame(
+            minWidth: 100
+        )
+
+        if mode == .scale {
             Picker(
-                "Mode",
+                "Scale",
                 selection:
-                    $mode
+                    $scale
             ) {
                 ForEach(
-                    FretboardMode
+                    GuitarScaleType
                         .allCases
                 ) {
                     Text($0.rawValue)
@@ -108,16 +196,18 @@ struct FretboardView:
                 }
             }
             .frame(
-                width: 120
+                minWidth: 180
             )
+        }
 
+        if mode == .chord {
             Picker(
-                "Root",
+                "Chord",
                 selection:
-                    $root
+                    $quality
             ) {
                 ForEach(
-                    GuitarNote
+                    GuitarChordQuality
                         .allCases
                 ) {
                     Text(
@@ -127,138 +217,129 @@ struct FretboardView:
                 }
             }
             .frame(
-                width: 100
+                minWidth: 150
             )
-
-            if mode == .scale {
-                Picker(
-                    "Scale",
-                    selection:
-                        $scale
-                ) {
-                    ForEach(
-                        GuitarScaleType
-                            .allCases
-                    ) {
-                        Text($0.rawValue)
-                            .tag($0)
-                    }
-                }
-                .frame(
-                    width: 190
-                )
-            }
-
-            if mode == .chord {
-                Picker(
-                    "Chord",
-                    selection:
-                        $quality
-                ) {
-                    ForEach(
-                        GuitarChordQuality
-                            .allCases
-                    ) {
-                        Text(
-                            $0.displayName
-                        )
-                        .tag($0)
-                    }
-                }
-                .frame(
-                    width: 140
-                )
-            }
-
-            Stepper(
-                "\(maxFret) frets",
-                value:
-                    $maxFret,
-                in: 12...24
-            )
-
-            Toggle(
-                "Intervals",
-                isOn:
-                    $intervalLabels
-            )
-
-            Toggle(
-                "Left",
-                isOn:
-                    $leftHanded
-            )
-
-            Spacer()
         }
-        .padding(
-            .horizontal,
-            16
+
+        Stepper(
+            "\(maxFret) frets",
+            value:
+                $maxFret,
+            in: 12...24
         )
-        .padding(
-            .vertical,
-            10
+
+        Toggle(
+            "Intervals",
+            isOn:
+                $intervalLabels
+        )
+
+        Toggle(
+            "Left",
+            isOn:
+                $leftHanded
         )
     }
 
-    private var fretboard:
+    private var fretboardCanvas:
         some View {
+
         VStack(
-            spacing: 0
+            alignment: .leading,
+            spacing: 12
         ) {
-            fretNumbers
-
-            ForEach(
-                stringOrder,
-                id:
-                    \.stringNumber
+            HStack(
+                spacing: 12
             ) {
-                string in
+                Text(
+                    canvasTitle
+                )
+                .font(
+                    .headline
+                )
 
-                HStack(
-                    spacing: 0
+                Text(
+                    intervalLabels
+                    ? "度数表示"
+                    : "音名表示"
+                )
+                .font(.caption)
+                .foregroundStyle(
+                    .secondary
+                )
+            }
+
+            VStack(
+                spacing: 0
+            ) {
+                fretNumbers
+
+                ForEach(
+                    stringOrder,
+                    id:
+                        \.stringNumber
                 ) {
-                    ForEach(
-                        fretOrder,
-                        id: \.self
+                    string in
+
+                    HStack(
+                        spacing: 0
                     ) {
-                        fret in
+                        ForEach(
+                            fretOrder,
+                            id: \.self
+                        ) {
+                            fret in
 
-                        let midi =
-                            string.midi +
-                            fret
+                            let midi =
+                                string.midi +
+                                fret
 
-                        let note =
-                            GuitarNote
-                                .fromMIDI(
-                                    midi
-                                )
+                            let note =
+                                GuitarNote
+                                    .fromMIDI(
+                                        midi
+                                    )
 
-                        FretCell(
-                            note: note,
-                            text:
-                                cellText(
-                                    note
-                                ),
-                            highlighted:
-                                isHighlighted(
-                                    note
-                                ),
-                            isRoot:
-                                note ==
-                                root,
-                            fret: fret
-                        )
-                        .frame(
-                            width:
-                                fret == 0
-                                ? 56
-                                : 64,
-                            height: 48
-                        )
+                            FretCell(
+                                note: note,
+                                text:
+                                    cellText(
+                                        note
+                                    ),
+                                highlighted:
+                                    isHighlighted(
+                                        note
+                                    ),
+                                isRoot:
+                                    note ==
+                                    root,
+                                fret: fret
+                            )
+                            .frame(
+                                width:
+                                    fret == 0
+                                    ? 58
+                                    : 66,
+                                height: 50
+                            )
+                        }
                     }
                 }
             }
+            .background(
+                .background,
+                in:
+                    RoundedRectangle(
+                        cornerRadius: 10,
+                        style: .continuous
+                    )
+            )
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: 10,
+                    style: .continuous
+                )
+            )
         }
     }
 
@@ -285,11 +366,26 @@ struct FretboardView:
                 .frame(
                     width:
                         fret == 0
-                        ? 56
-                        : 64,
-                    height: 26
+                        ? 58
+                        : 66,
+                    height: 28
                 )
             }
+        }
+    }
+
+    private var canvasTitle:
+        String {
+        switch mode {
+        case .note:
+            root.displayName
+        case .scale:
+            "\(root.displayName) \(scale.rawValue)"
+        case .chord:
+            GuitarChord(
+                root: root,
+                quality: quality
+            ).name
         }
     }
 
@@ -378,16 +474,15 @@ private struct FretCell:
             Rectangle()
                 .fill(
                     fret == 0
-                    ? Color
-                        .secondary
-                        .opacity(0.08)
+                    ? Color.secondary
+                        .opacity(0.07)
                     : Color.clear
                 )
 
             Rectangle()
                 .stroke(
                     Color.secondary
-                        .opacity(0.25),
+                        .opacity(0.20),
                     lineWidth: 0.5
                 )
 
@@ -395,15 +490,24 @@ private struct FretCell:
                 Circle()
                     .fill(
                         isRoot
-                        ? Color
-                            .accentColor
-                        : Color
-                            .secondary
-                            .opacity(0.28)
+                        ? Color.accentColor
+                        : Color.secondary
+                            .opacity(0.20)
                     )
+                    .overlay {
+                        if isRoot {
+                            Circle()
+                                .stroke(
+                                    Color.white
+                                        .opacity(0.28),
+                                    lineWidth: 1
+                                )
+                                .padding(2)
+                        }
+                    }
                     .frame(
-                        width: 30,
-                        height: 30
+                        width: 32,
+                        height: 32
                     )
 
                 Text(text)

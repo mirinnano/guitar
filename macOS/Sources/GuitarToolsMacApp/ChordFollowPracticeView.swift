@@ -636,52 +636,82 @@ private struct PracticeFeedbackBar:
 
     var body: some View {
         HStack(
-            spacing: 22
+            spacing: 16
         ) {
-            LabeledContent(
-                "期待"
+            VStack(
+                alignment: .leading,
+                spacing: 2
             ) {
+                Text("期待")
+                    .font(.caption)
+                    .foregroundStyle(
+                        .secondary
+                    )
+
                 Text(
                     pending
                     ?? expected
                     ?? "—"
                 )
-                .fontWeight(
-                    .semibold
+                .font(
+                    .title3
+                        .weight(.semibold)
                 )
             }
+            .frame(
+                minWidth: 80,
+                alignment: .leading
+            )
 
-            LabeledContent(
-                "検出"
+            Image(
+                systemName:
+                    "arrow.right"
+            )
+            .foregroundStyle(
+                .tertiary
+            )
+
+            VStack(
+                alignment: .leading,
+                spacing: 2
             ) {
+                Text("検出")
+                    .font(.caption)
+                    .foregroundStyle(
+                        .secondary
+                    )
+
                 Text(
                     detected ?? "—"
                 )
-                .fontWeight(
-                    .semibold
+                .font(
+                    .title3
+                        .weight(.semibold)
                 )
             }
+            .frame(
+                minWidth: 80,
+                alignment: .leading
+            )
 
             Divider()
-                .frame(height: 24)
+                .frame(height: 34)
 
             if let attempt =
                 lastAttempt {
-                harmonyLabel(
+                harmonyPill(
                     attempt
                 )
 
-                timingLabel(
+                timingPill(
                     attempt
                 )
             } else {
-                Label(
-                    "演奏待ち",
+                MacStatusPill(
+                    text: "演奏待ち",
                     systemImage:
-                        "waveform"
-                )
-                .foregroundStyle(
-                    .secondary
+                        "waveform",
+                    role: .neutral
                 )
             }
 
@@ -690,46 +720,42 @@ private struct PracticeFeedbackBar:
     }
 
     @ViewBuilder
-    private func harmonyLabel(
+    private func harmonyPill(
         _ attempt:
             PracticeAttempt
     ) -> some View {
 
         switch attempt.harmony {
         case .correct:
-            Label(
-                "コード正解",
+            MacStatusPill(
+                text: "コード正解",
                 systemImage:
-                    "checkmark.circle.fill"
-            )
-            .foregroundStyle(
-                .green
+                    "checkmark.circle.fill",
+                role: .success
             )
 
         case .incorrect:
-            Label(
-                "\(attempt.playedChord ?? "—") を検出",
+            MacStatusPill(
+                text:
+                    "\(attempt.playedChord ?? "—") を検出",
                 systemImage:
-                    "xmark.circle.fill"
-            )
-            .foregroundStyle(
-                .red
+                    "xmark.circle.fill",
+                role:
+                    .destructive
             )
 
         case .unrecognized:
-            Label(
-                "コード未判定",
+            MacStatusPill(
+                text: "コード未判定",
                 systemImage:
-                    "questionmark.circle"
-            )
-            .foregroundStyle(
-                .secondary
+                    "questionmark.circle",
+                role: .neutral
             )
         }
     }
 
     @ViewBuilder
-    private func timingLabel(
+    private func timingPill(
         _ attempt:
             PracticeAttempt
     ) -> some View {
@@ -742,39 +768,42 @@ private struct PracticeFeedbackBar:
 
         switch attempt.timing {
         case .early:
-            Label(
-                String(
-                    format:
-                        "%.0f ms 早い",
-                    milliseconds
-                ),
+            MacStatusPill(
+                text:
+                    String(
+                        format:
+                            "%.0f ms 早い",
+                        milliseconds
+                    ),
                 systemImage:
-                    "arrow.left.circle"
+                    "arrow.left.circle",
+                role: .warning
             )
 
         case .onTime:
-            Label(
-                String(
-                    format:
-                        "%.0f ms",
-                    milliseconds
-                ),
+            MacStatusPill(
+                text:
+                    String(
+                        format:
+                            "%.0f ms",
+                        milliseconds
+                    ),
                 systemImage:
-                    "scope"
-            )
-            .foregroundStyle(
-                .green
+                    "scope",
+                role: .success
             )
 
         case .late:
-            Label(
-                String(
-                    format:
-                        "%.0f ms 遅い",
-                    milliseconds
-                ),
+            MacStatusPill(
+                text:
+                    String(
+                        format:
+                            "%.0f ms 遅い",
+                        milliseconds
+                    ),
                 systemImage:
-                    "arrow.right.circle"
+                    "arrow.right.circle",
+                role: .warning
             )
         }
     }
