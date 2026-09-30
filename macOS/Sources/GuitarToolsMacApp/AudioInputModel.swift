@@ -385,10 +385,19 @@ final class AudioInputModel:
             let target =
                 try resolvedInputDevice()
 
-            if let deviceID =
-                target?.id ??
-                catalog
-                    .defaultInputDeviceID() {
+            let deviceID:
+                AudioDeviceID?
+
+            if let target {
+                deviceID =
+                    target.id
+            } else {
+                deviceID =
+                    try catalog
+                        .defaultInputDeviceID()
+            }
+
+            if let deviceID {
                 try setCurrentDevice(
                     deviceID,
                     inputNode:
