@@ -907,6 +907,14 @@ public struct GuitarChord:
     public let quality:
         GuitarChordQuality
 
+    public init(
+        root: GuitarNote,
+        quality: GuitarChordQuality
+    ) {
+        self.root = root
+        self.quality = quality
+    }
+
     public var name: String {
         root.displayName +
         quality.rawValue
