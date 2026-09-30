@@ -130,6 +130,101 @@ struct ChordShapeDiagram:
                     )
                 }
 
+                for barre in shape.barres {
+                    let displayFret =
+                        barre.fret -
+                        shape.baseFret +
+                        1
+
+                    guard
+                        displayFret >= 1,
+                        displayFret <=
+                            fretCount
+                    else {
+                        continue
+                    }
+
+                    let firstIndex =
+                        max(
+                            min(
+                                barre.fromString - 1,
+                                5
+                            ),
+                            0
+                        )
+
+                    let lastIndex =
+                        max(
+                            min(
+                                barre.toString - 1,
+                                5
+                            ),
+                            0
+                        )
+
+                    let startX =
+                        left +
+                        CGFloat(
+                            min(
+                                firstIndex,
+                                lastIndex
+                            )
+                        ) *
+                        stringGap
+
+                    let endX =
+                        left +
+                        CGFloat(
+                            max(
+                                firstIndex,
+                                lastIndex
+                            )
+                        ) *
+                        stringGap
+
+                    let y =
+                        top +
+                        (
+                            CGFloat(
+                                displayFret
+                            ) -
+                            0.5
+                        ) *
+                        fretGap
+
+                    context.stroke(
+                        Path {
+                            path in
+
+                            path.move(
+                                to:
+                                    CGPoint(
+                                        x: startX,
+                                        y: y
+                                    )
+                            )
+                            path.addLine(
+                                to:
+                                    CGPoint(
+                                        x: endX,
+                                        y: y
+                                    )
+                            )
+                        },
+                        with:
+                            .foreground,
+                        style:
+                            StrokeStyle(
+                                lineWidth:
+                                    compact
+                                    ? 7
+                                    : 9,
+                                lineCap:
+                                    .round
+                            )
+                    )
+                }
+
                 for (
                     arrayIndex,
                     fret
