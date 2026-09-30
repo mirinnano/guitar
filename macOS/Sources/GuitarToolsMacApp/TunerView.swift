@@ -64,6 +64,7 @@ struct TunerView:
                     alignment: .leading,
                     spacing: 16
                 ) {
+                    audioInputSection
                     tuningSection
                     referenceSection
                 }
@@ -295,6 +296,32 @@ struct TunerView:
                     style: .continuous
                 )
         )
+    }
+
+    private var audioInputSection:
+        some View {
+
+        MacSection(
+            "Audio Input",
+            subtitle:
+                "入力デバイスとチャンネル"
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: 14
+            ) {
+                AudioInputDevicePicker(
+                    audio: audio
+                )
+
+                MacAudioLevelMeter(
+                    levelDBFS:
+                        audio.levelDBFS,
+                    clipping:
+                        audio.clipping
+                )
+            }
+        }
     }
 
     private var tuningSection:
