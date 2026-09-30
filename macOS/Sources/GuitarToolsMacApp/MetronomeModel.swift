@@ -649,11 +649,11 @@ final class MetronomeModel:
 
         let restoredAccents =
             saved.accentRawValues
-                .compactMap(
-                    MacBeatAccent.init(
-                        rawValue:
+                .compactMap {
+                    MacBeatAccent(
+                        rawValue: $0
                     )
-                )
+                }
 
         accents =
             restoredAccents.isEmpty
