@@ -120,7 +120,7 @@ Mac版は録音・ミキサー・アンプシム等を持たず、オーディ�
 
 ### macOS Release
 
-- 現在のmacOS版: **v0.2.0**
+- 現在のmacOS版: **v0.2.1**
 - 対応OS: macOS 14+
 - Release assetはDMGで配布し、DMG内の `Guitar Tools.app` をApplicationsへコピーします
 - CIでは `Guitar Tools.app` bundleをそのままArtifactとして保持します
