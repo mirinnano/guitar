@@ -113,9 +113,19 @@ Android版の現行ユーザー機能をSwiftUIへ移植済みです。
 - **ChordWiki**: 検索、ネイティブ譜面表示、押さえ方、BPM自動スクロール、現在コード、小節表示、YouTube小窓、アンカー同期、piecewise time-warp、同期メトロノーム、アンカー永続化
 - **Fretboard**: Note / Scale / Chord、Major / Minor / Pentatonic / Blues / Dorian / Mixolydian、interval表示、各種tuning、12–24 frets、左利き
 - **Practice**: コード進行編集、各step拍数、ChordPro import、MusicBrainz曲検索、ローカルbacking track、再生位置同期、offset
-- **Mac extension**: オーディオIF入力、リアルタイムコード判定、オンセット時刻、期待コード比較、早い/遅いms評価、セッション統計
+- **Mac extension**: CoreAudio入力デバイス/チャンネル選択、ホットプラグ追従、入力レイテンシ表示、リアルタイムコード判定、オンセット時刻、期待コード比較、早い/遅いms評価、セッション統計
+- **Persistence**: メトロノーム / チューナー / 入力デバイス / チャンネル / 練習設定を保持し、練習セッションをversioned JSONで保存
 
 Mac版は録音・ミキサー・アンプシム等を持たず、オーディオ入力を練習解析へ使います。
+
+### macOS Release
+
+- 現在のmacOS版: **v0.2.0**
+- 対応OS: macOS 14+
+- Release assetはDMGで配布し、DMG内の `Guitar Tools.app` をApplicationsへコピーします
+- CIでは `Guitar Tools.app` bundleをそのままArtifactとして保持します
+- 現在はad-hoc署名で、Developer ID notarizationは未対応です
+
 
 ## 楽曲データ
 
