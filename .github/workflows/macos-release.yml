@@ -1,0 +1,131 @@
+name: macOS Release
+
+on:
+  push:
+    branches:
+      - "release/v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#release/v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release branch: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Unit tests
+        run: swift test --package-path macOS
+
+      - name: Debug build
+        run: swift build --package-path macOS
+
+      - name: Package release app
+        env:
+          GETSONGBPM_API_KEY: ${{ secrets.GETSONGBPM_API_KEY }}
+        run: |
+          chmod +x macOS/scripts/package-app.sh
+          macOS/scripts/package-app.sh
+
+      - name: Verify packaged app
+        run: |
+          set -euo pipefail
+          APP="macOS/dist/Guitar Tools.app"
+          codesign --verify --deep --strict "$APP"
+          plutil -lint "$APP/Contents/Info.plist"
+          test -x "$APP/Contents/MacOS/GuitarToolsMacApp"
+          "$APP/Contents/MacOS/GuitarToolsMacApp" --smoke-test
+
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+          BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
+          test "$VERSION" = "${{ steps.version.outputs.version }}"
+          test -n "$BUILD"
+
+      - name: Create DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          STAGE="macOS/dist/dmg-root"
+          DMG="macOS/dist/Guitar Tools-$VERSION.dmg"
+
+          rm -rf "$STAGE" "$DMG"
+          mkdir -p "$STAGE"
+          ditto "macOS/dist/Guitar Tools.app" "$STAGE/Guitar Tools.app"
+          ln -s /Applications "$STAGE/Applications"
+
+          hdiutil create \
+            -volname "Guitar Tools" \
+            -srcfolder "$STAGE" \
+            -ov \
+            -format UDZO \
+            "$DMG"
+
+          rm -rf "$STAGE"
+          shasum -a 256 "$DMG" | tee "macOS/dist/Guitar Tools-$VERSION.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          DMG="macOS/dist/Guitar Tools-$VERSION.dmg"
+          SHA="macOS/dist/Guitar Tools-$VERSION.sha256"
+          NOTES="docs/releases/v$VERSION.md"
+          TITLE="Guitar Tools v$VERSION"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "$TITLE" \
+              --notes-file "$NOTES"
+            gh release upload "$TAG" "$DMG" "$SHA" --clobber
+          else
+            gh release create "$TAG" \
+              "$DMG" \
+              "$SHA" \
+              --target "$GITHUB_SHA" \
+              --title "$TITLE" \
+              --notes-file "$NOTES"
+          fi
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Guitar Tools.app
+          path: macOS/dist/Guitar Tools.app
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Guitar Tools DMG
+          path: |
+            macOS/dist/Guitar Tools-${{ steps.version.outputs.version }}.dmg
+            macOS/dist/Guitar Tools-${{ steps.version.outputs.version }}.sha256
+          if-no-files-found: error
+          retention-days: 30
