@@ -112,10 +112,19 @@ jobs:
         run: |
           APK_NAME="guitar-tools-${RELEASE_VERSION}.apk"
 
-          gh release create "${RELEASE_VERSION}" \
-            "$APK_NAME" \
-            "$APK_NAME.sha256" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --target "${GITHUB_SHA}" \
-            --generate-notes \
-            --title "Guitar Tools ${RELEASE_VERSION}"
+          for attempt in {1..60}; do
+            if gh release view "${RELEASE_VERSION}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+              gh release upload "${RELEASE_VERSION}" \
+                "$APK_NAME" \
+                "$APK_NAME.sha256" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --clobber
+              exit 0
+            fi
+
+            echo "Waiting for shared GitHub Release ${RELEASE_VERSION} ($attempt/60)"
+            sleep 5
+          done
+
+          echo "Shared GitHub Release ${RELEASE_VERSION} was not created in time" >&2
+          exit 1
