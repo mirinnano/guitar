@@ -11,26 +11,18 @@ struct TunerView:
     private var model:
         TunerModel
 
-    @State
-    private var tonePlayer =
-        ReferenceTonePlayer()
+    @ObservedObject private var output: AudioOutputModel
 
-    private let settingsColumns = [
-        GridItem(
-            .adaptive(
-                minimum: 340,
-                maximum: 560
-            ),
-            spacing: 16
-        )
-    ]
+    @State private var inspectorPresented = false
 
     init(
         audio: AudioInputModel,
+        output: AudioOutputModel,
         preferencesStore:
             AppPreferencesStore
     ) {
         self.audio = audio
+        self.output = output
         _model =
             StateObject(
                 wrappedValue:
@@ -46,48 +38,44 @@ struct TunerView:
         ScrollView {
             VStack(
                 alignment: .leading,
-                spacing: 20
+                spacing: MacLayout.sectionSpacing
             ) {
-                MacPageHeader(
-                    "チューナー",
-                    subtitle:
-                        "オーディオ入力からYINでピッチを検出します。"
-                ) {
+                MacPageHeader("チューナー", subtitle: "弦を1本ずつ鳴らして、中央に合わせましょう。") {
                     tuningStatus
+                }
+
+                routingSection
+
+                if !audio.isRunning {
+                    MacSection("接続できたら、1本ずつ", subtitle: "最初は6弦の低いEから") {
+                        Text("ギターをHI-Z入力につなぎ、入力チャンネルを選んでください。開始時にマイクの許可が必要です。アコースティックギターはMacのマイクも選べます。")
+                            .foregroundStyle(.secondary)
+                        Button("チューニングを開始", systemImage: "waveform", action: toggleInput)
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+                if let error = audio.errorMessage {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.orange)
                 }
 
                 tunerHero
 
-                LazyVGrid(
-                    columns:
-                        settingsColumns,
-                    alignment: .leading,
-                    spacing: 16
-                ) {
-                    audioInputSection
-                    tuningSection
-                    referenceSection
-                }
+                tuningSection
             }
-            .padding(26)
+            .padding(MacLayout.pagePadding)
             .macPageWidth(1_080)
         }
         .navigationTitle(
             "チューナー"
         )
         .toolbar {
-            ToolbarItem(
+            ToolbarItemGroup(
                 placement:
                     .primaryAction
             ) {
-                Button {
-                    if audio.isRunning {
-                        model.stop()
-                        audio.stop()
-                    } else {
-                        model.start()
-                    }
-                } label: {
+                Button(action: toggleInput) {
                     Label(
                         audio.isRunning
                         ? "入力停止"
@@ -103,14 +91,33 @@ struct TunerView:
                     ? "オーディオ入力を停止"
                     : "オーディオ入力を開始"
                 )
+
+                Button("設定", systemImage: "slider.horizontal.3") {
+                    inspectorPresented.toggle()
+                }
+                .help("入力と基準音の設定")
             }
         }
+        .inspector(isPresented: $inspectorPresented) {
+            ScrollView {
+                VStack(spacing: 16) {
+                    audioInputSection
+                    referenceSection
+                }
+                .padding(16)
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
+            .inspectorColumnWidth(min: 300, ideal: 340, max: 400)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .practiceToggleInspector)) { _ in
+            inspectorPresented.toggle()
+        }
         .onAppear {
-            model.start()
+            if audio.isRunning { model.start() }
         }
         .onDisappear {
             model.stop()
-            tonePlayer.stop()
+            output.stopReference()
         }
         .onChange(
             of: model.a4Hz
@@ -123,20 +130,24 @@ struct TunerView:
         }
     }
 
+    private var routingSection: some View {
+        AudioRoutingSection(audio: audio, output: output)
+    }
+
     @ViewBuilder
     private var tuningStatus:
         some View {
 
         if !audio.isRunning {
             MacStatusPill(
-                text: "Input Off",
+                text: "入力停止中",
                 systemImage:
                     "waveform.slash",
                 role: .neutral
             )
         } else if isInTune {
             MacStatusPill(
-                text: "In Tune",
+                text: "合っています",
                 systemImage:
                     "checkmark.circle.fill",
                 role: .success
@@ -147,8 +158,8 @@ struct TunerView:
             MacStatusPill(
                 text:
                     cents > 0
-                    ? "Sharp"
-                    : "Flat",
+                    ? "高め"
+                    : "低め",
                 systemImage:
                     cents > 0
                     ? "arrow.up"
@@ -158,154 +169,83 @@ struct TunerView:
         }
     }
 
-    private var tunerHero:
-        some View {
-
-        VStack(
-            spacing: 22
-        ) {
-            HStack(
-                alignment: .center,
-                spacing: 34
-            ) {
-                VStack(
-                    alignment: .leading,
-                    spacing: 4
-                ) {
-                    Text(noteText)
-                        .font(
-                            .system(
-                                size: 76,
-                                weight: .semibold,
-                                design: .rounded
-                            )
-                        )
-                        .contentTransition(
-                            .numericText()
-                        )
-
-                    Text(frequencyText)
-                        .font(
-                            .callout
-                                .monospacedDigit()
-                        )
-                        .foregroundStyle(
-                            .secondary
-                        )
+    private var tunerHero: some View {
+        VStack(spacing: 26) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 36) {
+                    detectedNote
+                    tuningGauge
                 }
-                .frame(
-                    minWidth: 180,
-                    alignment: .leading
-                )
-
-                VStack(
-                    spacing: 8
-                ) {
-                    Text(targetText)
-                        .font(
-                            .headline
-                        )
-
-                    TunerNeedle(
-                        cents:
-                            model.target?
-                                .centsFromTarget
-                            ?? 0
-                    )
-                    .frame(
-                        minWidth: 360,
-                        maxWidth: 620,
-                        minHeight: 54,
-                        maxHeight: 54
-                    )
-
-                    HStack {
-                        Text("−50")
-                        Spacer()
-                        Text(centsText)
-                            .font(
-                                .title2
-                                    .weight(
-                                        .semibold
-                                    )
-                                    .monospacedDigit()
-                            )
-                            .foregroundStyle(
-                                isInTune
-                                ? .green
-                                : .primary
-                            )
-                        Spacer()
-                        Text("+50")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(
-                        .secondary
-                    )
+                VStack(spacing: 24) {
+                    detectedNote
+                    tuningGauge
                 }
-                .frame(
-                    maxWidth: .infinity
-                )
             }
 
             Divider()
 
-            HStack(
-                spacing: 16
-            ) {
-                MacAudioLevelMeter(
-                    levelDBFS:
-                        audio.levelDBFS,
-                    clipping:
-                        audio.clipping
-                )
-                .frame(
-                    maxWidth: 360
-                )
+            HStack(spacing: 20) {
+                MacAudioLevelMeter(levelDBFS: audio.levelDBFS, clipping: audio.clipping)
+                    .frame(maxWidth: 360)
 
-                Spacer()
-
-                if let target =
-                    model.target {
+                if let target = model.target {
+                    Spacer(minLength: 12)
                     MacMetric(
-                        "Target",
-                        value:
-                            target.string.label,
-                        detail:
-                            String(
-                                format:
-                                    "%.2f Hz",
-                                target
-                                    .targetFrequencyHz
-                            ),
-                        systemImage:
-                            "scope"
-                    )
-                    .frame(
-                        maxWidth: 220
+                        "目標の音",
+                        value: target.string.label,
+                        detail: String(format: "%.2f Hz", target.targetFrequencyHz),
+                        systemImage: "scope"
                     )
                 }
             }
         }
-        .padding(24)
-        .background(
-            .quaternary.opacity(0.18),
-            in:
-                RoundedRectangle(
-                    cornerRadius: 16,
-                    style: .continuous
-                )
-        )
+        .padding(32)
+        .macContentSurface(radius: MacLayout.heroRadius)
+    }
+
+    private var detectedNote: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(noteText)
+                .font(.system(size: 96, weight: .light, design: .rounded))
+                .contentTransition(.numericText())
+
+            Text(frequencyText)
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 150, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var tuningGauge: some View {
+        VStack(spacing: 12) {
+            Text(targetText)
+                .font(.headline)
+
+            TunerNeedle(cents: model.target?.centsFromTarget)
+                .frame(minWidth: 180, maxWidth: 620, minHeight: 54, maxHeight: 54)
+                .accessibilityLabel("音程のずれ")
+                .accessibilityValue(centsText)
+
+            HStack {
+                Text("−50")
+                Spacer()
+                Text(centsText)
+                    .font(.title2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(isInTune ? .green : .primary)
+                Spacer()
+                Text("+50")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var audioInputSection:
         some View {
 
-        MacSection(
-            "Audio Input",
-            subtitle:
-                "入力デバイスとチャンネル"
-        ) {
+        MacSection("オーディオ入力") {
             VStack(
                 alignment: .leading,
                 spacing: 14
@@ -327,17 +267,13 @@ struct TunerView:
     private var tuningSection:
         some View {
 
-        MacSection(
-            "チューニング",
-            subtitle:
-                "プリセット、弦固定、基準音"
-        ) {
+        MacSection("チューニング") {
             VStack(
                 alignment: .leading,
                 spacing: 14
             ) {
                 Picker(
-                    "Preset",
+                    "チューニング",
                     selection:
                         Binding(
                             get: {
@@ -379,12 +315,12 @@ struct TunerView:
                             .tag(tuning.id)
                     }
 
-                    Text("Custom")
+                    Text("カスタム")
                         .tag("custom")
                 }
 
                 Text(
-                    "弦をクリックするとターゲットを固定。右クリックで基準音を再生できます。"
+                    "左が6弦（太い）、右が1弦（細い）。弦を選ぶと、その弦に合わせて調整できます。"
                 )
                 .font(.caption)
                 .foregroundStyle(
@@ -409,6 +345,19 @@ struct TunerView:
                         spacing: 8
                     ) {
                         stringButtons
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    if let string = model.selectedTuning.strings.first(where: {
+                        $0.stringNumber == (model.lockedStringNumber ?? 6)
+                    }) {
+                        Button("\(string.stringNumber)弦 \(string.label)の基準音を聴く", systemImage: "speaker.wave.2") {
+                            output.playReference(frequency: GuitarNote.frequency(forMIDI: string.midi, a4Hz: model.a4Hz))
+                        }
+                    }
+                    if model.lockedStringNumber != nil {
+                        Button("自動判定に戻す") { model.setLockedString(nil) }
                     }
                 }
 
@@ -500,7 +449,7 @@ struct TunerView:
                 .selectedTuning
                 .strings
                 .sorted {
-                    $0.stringNumber <
+                    $0.stringNumber >
                     $1.stringNumber
                 }
         ) {
@@ -546,8 +495,8 @@ struct TunerView:
                 Button(
                     "基準音を再生"
                 ) {
-                    tonePlayer
-                        .play(
+                    output
+                        .playReference(
                             frequency:
                                 GuitarNote
                                     .frequency(
@@ -565,11 +514,7 @@ struct TunerView:
     private var referenceSection:
         some View {
 
-        MacSection(
-            "基準",
-            subtitle:
-                "基準ピッチと入力感度"
-        ) {
+        MacSection("基準音と入力感度") {
             VStack(
                 alignment: .leading,
                 spacing: 16
@@ -634,7 +579,7 @@ struct TunerView:
                 ) {
                     HStack {
                         Text(
-                            "Sensitivity"
+                            "入力感度"
                         )
                         .foregroundStyle(
                             .secondary
@@ -662,14 +607,14 @@ struct TunerView:
                 }
 
                 MacMetric(
-                    "Mode",
+                    "弦の選択",
                     value:
                         model
                             .lockedStringNumber
                         .map {
                             "\($0)弦固定"
                         }
-                        ?? "Auto",
+                        ?? "自動",
                     detail:
                         model
                             .selectedTuning
@@ -716,10 +661,10 @@ struct TunerView:
         guard let target =
             model.target
         else {
-            return "Target —"
+            return "対象の弦 —"
         }
 
-        return "Target \(target.string.label)"
+        return "対象の弦 \(target.string.label)"
     }
 
     private var centsText:
@@ -738,6 +683,12 @@ struct TunerView:
         )
     }
 
+    private func toggleInput() {
+        model.stop()
+        if audio.isRunning { audio.stop() }
+        else { model.start() }
+    }
+
     private var isInTune:
         Bool {
         abs(
@@ -751,7 +702,7 @@ struct TunerView:
 private struct TunerNeedle:
     View {
 
-    let cents: Double
+    let cents: Double?
 
     var body: some View {
         GeometryReader {
@@ -790,6 +741,7 @@ private struct TunerNeedle:
                         width: 1
                     )
 
+                if let cents {
                 Capsule()
                     .fill(
                         abs(cents) <= 5
@@ -826,6 +778,7 @@ private struct TunerNeedle:
                         ),
                         value: cents
                     )
+                }
             }
         }
     }

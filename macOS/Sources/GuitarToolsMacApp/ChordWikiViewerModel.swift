@@ -10,6 +10,9 @@ final class ChordWikiViewerModel:
     var query = ""
 
     @Published private(set)
+    var lastSearchQuery: String?
+
+    @Published private(set)
     var results:
         [ChordWikiSearchResult] = []
 
@@ -32,9 +35,26 @@ final class ChordWikiViewerModel:
     @Published
     var autoScroll = true
 
+    @Published var countInEnabled = true
+    @Published private(set) var countInRemaining: Int?
+    @Published private(set) var internalPlaybackRate = 1.0
+    @Published private(set) var practiceLoop: ChordPracticeLoop?
+    @Published private(set) var loopEnabled = false
+    @Published private(set) var loopRestartRevision: UInt64 = 0
+
+    private var countInTask: Task<Void, Never>?
+    private var countInStartBeat: Double?
+    private var loopRestartPending = false
+
     @Published
     var metronomeEnabled =
         false
+
+    @Published private(set)
+    var youtubeVideoID: String?
+
+    @Published private(set)
+    var musicMessage: String?
 
     @Published
     var youtubeSyncEnabled =
@@ -80,8 +100,8 @@ final class ChordWikiViewerModel:
     @Published private(set)
     var syncNotice: String?
 
-    private let client =
-        ChordWikiMacClient()
+    private let client:
+        any ChordWikiClientProtocol
 
     private let store =
         ChordSyncStore()
@@ -92,11 +112,21 @@ final class ChordWikiViewerModel:
     private let clock:
         any AudioHostClock
 
+    private var searchRequestID:
+        UInt64 = 0
+
+    private var chartRequestID:
+        UInt64 = 0
+
     init(
+        client:
+            any ChordWikiClientProtocol =
+            ChordWikiMacClient(),
         clock:
             any AudioHostClock =
             SystemAudioHostClock()
     ) {
+        self.client = client
         self.clock = clock
     }
 
@@ -164,21 +194,41 @@ final class ChordWikiViewerModel:
             return
         }
 
+        searchRequestID &+= 1
+        let requestID = searchRequestID
+
+        close()
+        lastSearchQuery = value
+        results = []
         isSearching = true
         errorMessage = nil
 
         Task {
             do {
-                results =
+                let values =
                     try await client
                         .search(
                             query: value
                         )
-                isSearching = false
+
+                guard requestID ==
+                    self.searchRequestID
+                else {
+                    return
+                }
+
+                self.results = values
+                self.isSearching = false
             } catch {
-                results = []
-                isSearching = false
-                errorMessage =
+                guard requestID ==
+                    self.searchRequestID
+                else {
+                    return
+                }
+
+                self.results = []
+                self.isSearching = false
+                self.errorMessage =
                     error.localizedDescription
             }
         }
@@ -188,6 +238,9 @@ final class ChordWikiViewerModel:
         _ result:
             ChordWikiSearchResult
     ) {
+        chartRequestID &+= 1
+        let requestID = chartRequestID
+
         stop()
         isLoading = true
         errorMessage = nil
@@ -203,6 +256,12 @@ final class ChordWikiViewerModel:
                         .build(
                             chart: loaded
                         )
+
+                guard requestID ==
+                    self.chartRequestID
+                else {
+                    return
+                }
 
                 chart = loaded
                 timeline = built
@@ -221,10 +280,14 @@ final class ChordWikiViewerModel:
                 youtubeDurationMs = 0
                 youtubePlaybackRate = 1
                 youtubePlaying = false
-                youtubeSyncEnabled =
-                    loaded
-                        .youtubeVideoID !=
-                    nil
+                youtubeOffsetMs = 0
+                youtubeVideoID = loaded.youtubeVideoID
+                musicMessage = nil
+                youtubeSyncEnabled = youtubeVideoID != nil
+                internalPlaybackRate = 1
+                practiceLoop = ChordPracticeLoop.bars(startingAt: 0, timeline: built)
+                loopEnabled = false
+                loopRestartPending = false
                 calibrationMode =
                     false
                 anchors =
@@ -239,6 +302,12 @@ final class ChordWikiViewerModel:
 
                 isLoading = false
             } catch {
+                guard requestID ==
+                    self.chartRequestID
+                else {
+                    return
+                }
+
                 isLoading = false
                 errorMessage =
                     error.localizedDescription
@@ -247,13 +316,114 @@ final class ChordWikiViewerModel:
     }
 
     func close() {
+        chartRequestID &+= 1
         stop()
+        isLoading = false
         chart = nil
         timeline = nil
+        youtubeVideoID = nil
+        youtubeSyncEnabled = false
+        youtubePlaying = false
+        musicMessage = nil
         currentBeat = 0
         anchors = []
         calibrationMode = false
         syncNotice = nil
+        practiceLoop = nil
+        loopEnabled = false
+    }
+
+    func setInternalPlaybackRate(_ rate: Double) {
+        guard [0.5, 0.75, 1.0].contains(rate) else { return }
+        internalStartBeat = currentBeat
+        internalStartTime = clock.nowSeconds()
+        internalPlaybackRate = rate
+        if isPlaying { restartMetronome() }
+    }
+
+    func setLoopEnabled(_ enabled: Bool) {
+        loopEnabled = enabled && practiceLoop != nil
+        loopRestartPending = false
+        if loopEnabled, youtubeVideoID != nil { setYouTubeSync(true) }
+    }
+
+    func useFourBarLoop() {
+        guard let timeline else { return }
+        practiceLoop = ChordPracticeLoop.bars(startingAt: currentBeat, timeline: timeline)
+        setLoopEnabled(true)
+    }
+
+    /// Returns a focused pair drill to its real position in the source song, paused.
+    func prepareTransitionLoop(startBeat: Double, endBeat: Double) {
+        guard let timeline,
+              let range = ChordPracticeLoop(startBeat: startBeat, endBeat: endBeat, totalBeats: timeline.totalBeats)
+        else { return }
+        stop()
+        practiceLoop = range
+        setLoopEnabled(true)
+        seek(beat: range.startBeat)
+    }
+
+    func setLoopStart() {
+        guard let timeline else { return }
+        let end = max(practiceLoop?.endBeat ?? 0, currentBeat + Double(timeline.beatsPerBar))
+        practiceLoop = ChordPracticeLoop(startBeat: currentBeat, endBeat: end, totalBeats: timeline.totalBeats)
+        if practiceLoop == nil { loopEnabled = false }
+        loopRestartPending = false
+    }
+
+    func setLoopEnd() {
+        guard let timeline else { return }
+        if let range = ChordPracticeLoop(
+            startBeat: practiceLoop?.startBeat ?? 0,
+            endBeat: currentBeat,
+            totalBeats: timeline.totalBeats
+        ) {
+            practiceLoop = range
+            loopRestartPending = false
+        }
+    }
+
+    func preparePlayback() {
+        if loopEnabled, let range = practiceLoop, !range.contains(currentBeat) {
+            seek(beat: range.startBeat)
+        } else if let timeline, currentBeat >= timeline.totalBeats {
+            seek(beat: 0)
+        }
+    }
+
+    func beginPlayback(afterCountIn completion: @escaping () -> Void) {
+        preparePlayback()
+        guard countInEnabled, let chart else {
+            completion()
+            return
+        }
+        stop()
+        let startBeat = currentBeat
+        countInStartBeat = startBeat
+        let beats = max(chart.beatsPerBar, 1)
+        let rate = youtubeVideoID != nil ? youtubePlaybackRate : internalPlaybackRate
+        let tempo = min(max(Int((Double(bpm) * rate).rounded()), 30), 300)
+        let config = MacMetronomeConfig(bpm: tempo, beatsPerBar: beats)
+        metronome.start(configProvider: { config }, onBeat: { _ in })
+        countInTask = Task { [weak self] in
+            guard let self else { return }
+            for remaining in stride(from: beats, through: 1, by: -1) {
+                guard !Task.isCancelled else { return }
+                self.countInRemaining = remaining
+                do {
+                    try await Task.sleep(for: .seconds(60.0 / Double(tempo)))
+                } catch { return }
+            }
+            guard !Task.isCancelled else { return }
+            self.metronome.stop()
+            self.countInRemaining = nil
+            self.countInTask = nil
+            self.countInStartBeat = nil
+            // Resume at the prepared target, not a paused video's stale sample.
+            self.seek(beat: startBeat)
+            completion()
+        }
     }
 
     func toggleInternalPlayback() {
@@ -292,6 +462,12 @@ final class ChordWikiViewerModel:
     }
 
     func stop() {
+        countInTask?.cancel()
+        countInTask = nil
+        countInRemaining = nil
+        countInStartBeat = nil
+        loopRestartPending = false
+        youtubePlaying = false
         timer?.invalidate()
         timer = nil
         metronomeTask?.cancel()
@@ -308,6 +484,7 @@ final class ChordWikiViewerModel:
             return
         }
 
+        loopRestartPending = false
         currentBeat =
             min(
                 max(
@@ -370,14 +547,40 @@ final class ChordWikiViewerModel:
         }
     }
 
+    func attachMusicURL(_ url: String) {
+        guard chart != nil else { return }
+        guard let videoID = YouTubeLink.videoID(in: url) else {
+            musicMessage = "有効なYouTubeの動画URLを貼り付けてください。"
+            return
+        }
+
+        stop()
+        youtubeVideoID = videoID
+        youtubePlaying = false
+        youtubePositionMs = 0
+        youtubeDurationMs = 0
+        youtubePlaybackRate = 1
+        youtubeOffsetMs = 0
+        currentBeat = 0
+        loopEnabled = false
+        anchors = []
+        calibrationMode = false
+        musicMessage = nil
+        youtubeSyncEnabled = true
+    }
+
+    func musicUnavailable() {
+        musicMessage = "この動画はアプリ内で再生できません。YouTubeで開くか、別の動画URLを指定してください。"
+        youtubePlaying = false
+        setYouTubeSync(false)
+    }
+
     func setYouTubeSync(
         _ enabled: Bool
     ) {
         guard
             !enabled ||
-            chart?
-                .youtubeVideoID !=
-                nil
+            youtubeVideoID != nil
         else {
             return
         }
@@ -415,45 +618,32 @@ final class ChordWikiViewerModel:
         lastVideoSampleAt =
             clock.nowSeconds()
 
-        lastVideoPosition =
-            max(
-                positionMs,
-                0
-            )
+        let position = max(positionMs, 0)
+        let duration = max(durationMs, 0)
+        let playbackRate = rate > 0 ? rate : 1
+        lastVideoPosition = position
 
-        youtubePositionMs =
-            max(
-                positionMs,
-                0
-            )
+        // Paused players still report at 10 Hz. Do not invalidate the chart
+        // and its diagrams when the published state has not changed.
+        if youtubePositionMs != position { youtubePositionMs = position }
+        if youtubeDurationMs != duration { youtubeDurationMs = duration }
+        if youtubePlaybackRate != playbackRate { youtubePlaybackRate = playbackRate }
+        if youtubePlaying != playing { youtubePlaying = playing }
 
-        youtubeDurationMs =
-            max(
-                durationMs,
-                0
-            )
-
-        youtubePlaybackRate =
-            rate > 0
-            ? rate
-            : 1
-
-        youtubePlaying =
-            playing
+        // Keep receiving player metadata, but freeze the prepared chart target
+        // until count-in completes (or stop cancels it).
+        guard countInStartBeat == nil else { return }
 
         if youtubeSyncEnabled {
-            currentBeat =
-                syncMap?
-                    .beat(
-                        forVideoPositionMs:
-                            youtubePositionMs
-                    )
-                ?? 0
+            let beat = syncMap?.beat(forVideoPositionMs: position) ?? 0
+            if currentBeat != beat { currentBeat = beat }
+            if isPlaying != playing { isPlaying = playing }
 
-            isPlaying =
-                playing
-
-            if playing {
+            if loopRestartPending, let range = practiceLoop, range.contains(currentBeat) {
+                loopRestartPending = false
+            }
+            if playing || (wasPlaying && loopEnabled && currentBeat >= (practiceLoop?.endBeat ?? .infinity)) {
+                applyVideoLoopIfNeeded()
                 installTimer()
             } else {
                 timer?.invalidate()
@@ -495,8 +685,7 @@ final class ChordWikiViewerModel:
     ) {
         guard
             let chart,
-            chart.youtubeVideoID !=
-                nil
+            youtubeVideoID != nil
         else {
             return
         }
@@ -709,6 +898,7 @@ final class ChordWikiViewerModel:
                     )
                 ?? 0
 
+            applyVideoLoopIfNeeded()
             return
         }
 
@@ -725,7 +915,14 @@ final class ChordWikiViewerModel:
             internalStartBeat +
             elapsed *
             Double(bpm) /
-            60
+            60 * internalPlaybackRate
+
+        if loopEnabled, let range = practiceLoop, currentBeat >= range.endBeat {
+            currentBeat = range.wrappedBeat(currentBeat)
+            internalStartBeat = currentBeat
+            internalStartTime = clock.nowSeconds()
+            restartMetronome()
+        }
 
         if currentBeat >=
             timeline.totalBeats {
@@ -733,6 +930,19 @@ final class ChordWikiViewerModel:
                 timeline.totalBeats
             stop()
         }
+    }
+
+    private func applyVideoLoopIfNeeded() {
+        guard loopEnabled, let range = practiceLoop,
+              currentBeat >= range.endBeat, !loopRestartPending else { return }
+        loopRestartPending = true
+        currentBeat = range.startBeat
+        youtubePositionMs = videoPosition(forBeat: range.startBeat)
+        lastVideoPosition = youtubePositionMs
+        lastVideoSampleAt = clock.nowSeconds()
+        youtubePlaying = true
+        isPlaying = true
+        loopRestartRevision &+= 1
     }
 
     private func stopInternalTimerOnly() {
@@ -797,7 +1007,7 @@ final class ChordWikiViewerModel:
                 (
                     youtubeSyncEnabled
                     ? youtubePlaybackRate
-                    : 1
+                    : internalPlaybackRate
                 ),
                 30
             )
@@ -888,7 +1098,7 @@ final class ChordWikiViewerModel:
                                                     (
                                                         self.youtubeSyncEnabled
                                                         ? self.youtubePlaybackRate
-                                                        : 1
+                                                        : self.internalPlaybackRate
                                                     )
                                                 )
                                                 .rounded()

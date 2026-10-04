@@ -7,6 +7,8 @@ struct MetronomeView:
     private var model:
         MetronomeModel
 
+    @State private var detailsPresented: Bool
+
     init(
         preferencesStore:
             AppPreferencesStore
@@ -19,6 +21,10 @@ struct MetronomeView:
                             preferencesStore
                     )
             )
+        _detailsPresented = State(initialValue:
+            preferencesStore.value.metronome.speedTrainerEnabled
+            || preferencesStore.value.metronome.countInBars > 0
+        )
     }
 
     private let settingsColumns = [
@@ -35,23 +41,19 @@ struct MetronomeView:
         ScrollView {
             VStack(
                 alignment: .leading,
-                spacing: 20
+                spacing: MacLayout.sectionSpacing
             ) {
-                MacPageHeader(
-                    "メトロノーム",
-                    subtitle:
-                        "テンポ、拍子、アクセントを一画面で調整します。"
-                ) {
+                MacPageHeader("メトロノーム") {
                     if model.isCountIn {
                         MacStatusPill(
-                            text: "Count-in",
+                            text: "カウントイン",
                             systemImage:
                                 "hourglass",
                             role: .neutral
                         )
                     } else if model.isPlaying {
                         MacStatusPill(
-                            text: "Playing",
+                            text: "再生中",
                             systemImage:
                                 "play.fill",
                             role: .success
@@ -61,61 +63,26 @@ struct MetronomeView:
 
                 tempoHero
 
-                LazyVGrid(
-                    columns:
-                        settingsColumns,
-                    alignment: .leading,
-                    spacing: 16
-                ) {
-                    rhythmSection
-                    clickSection
-                    speedTrainerSection
+                rhythmSection
+
+                DisclosureGroup(isExpanded: $detailsPresented) {
+                    LazyVGrid(columns: settingsColumns, alignment: .leading, spacing: 16) {
+                        clickSection
+                        speedTrainerSection
+                    }
+                    .padding(.top, 12)
+                } label: {
+                    Label("詳細設定", systemImage: "slider.horizontal.3")
+                        .font(.headline)
                 }
+                .padding(.horizontal, 4)
             }
-            .padding(26)
+            .padding(MacLayout.pagePadding)
             .macPageWidth(1_100)
         }
         .navigationTitle(
             "メトロノーム"
         )
-        .toolbar {
-            ToolbarItemGroup(
-                placement:
-                    .primaryAction
-            ) {
-                Button(
-                    "Tap"
-                ) {
-                    model.registerTap()
-                }
-                .keyboardShortcut(
-                    "t",
-                    modifiers: []
-                )
-                .help(
-                    "Tap Tempo"
-                )
-
-                Button {
-                    model.toggle()
-                } label: {
-                    Label(
-                        model.isPlaying
-                        ? "停止"
-                        : "開始",
-                        systemImage:
-                            model.isPlaying
-                            ? "stop.fill"
-                            : "play.fill"
-                    )
-                }
-                .help(
-                    model.isPlaying
-                    ? "メトロノームを停止"
-                    : "メトロノームを開始"
-                )
-            }
-        }
         .onDisappear {
             model.stop()
         }
@@ -138,10 +105,12 @@ struct MetronomeView:
                         systemName:
                             "minus.circle"
                     )
-                    .font(.title2)
+                    .font(.body)
+                    .frame(width: 18, height: 18)
                 }
-                .buttonStyle(.plain)
+                .macActionButton()
                 .help("-5 BPM")
+                .accessibilityLabel("テンポを5 BPM下げる")
 
                 Button {
                     model.changeBpm(-1)
@@ -151,7 +120,9 @@ struct MetronomeView:
                             "minus"
                     )
                 }
+                .macActionButton()
                 .help("-1 BPM")
+                .accessibilityLabel("テンポを1 BPM下げる")
 
                 VStack(
                     spacing: 0
@@ -161,8 +132,8 @@ struct MetronomeView:
                     )
                     .font(
                         .system(
-                            size: 76,
-                            weight: .semibold,
+                            size: 96,
+                            weight: .light,
                             design: .rounded
                         )
                     )
@@ -192,7 +163,9 @@ struct MetronomeView:
                             "plus"
                     )
                 }
+                .macActionButton()
                 .help("+1 BPM")
+                .accessibilityLabel("テンポを1 BPM上げる")
 
                 Button {
                     model.changeBpm(5)
@@ -201,11 +174,14 @@ struct MetronomeView:
                         systemName:
                             "plus.circle"
                     )
-                    .font(.title2)
+                    .font(.body)
+                    .frame(width: 18, height: 18)
                 }
-                .buttonStyle(.plain)
+                .macActionButton()
                 .help("+5 BPM")
+                .accessibilityLabel("テンポを5 BPM上げる")
             }
+            .controlSize(.large)
 
             Slider(
                 value:
@@ -227,7 +203,36 @@ struct MetronomeView:
                 maxWidth: 620
             )
 
+            .accessibilityLabel("テンポ")
+            .accessibilityValue("\(model.bpm) BPM")
+
             beatIndicator
+
+            HStack(spacing: 12) {
+                Button {
+                    model.registerTap()
+                } label: {
+                    Label("Tap Tempo", systemImage: "hand.tap")
+                }
+                .macActionButton()
+                .keyboardShortcut("t", modifiers: [])
+                .help("タップの間隔からテンポを設定（T）")
+
+                Button {
+                    model.toggle()
+                } label: {
+                    Label(
+                        model.isPlaying ? "停止" : "再生",
+                        systemImage: model.isPlaying ? "stop.fill" : "play.fill"
+                    )
+                    .frame(minWidth: 74)
+                }
+                .macActionButton(prominent: true)
+                .keyboardShortcut(.space, modifiers: [])
+                .help("メトロノームを再生 / 停止（Space）")
+            }
+            .controlSize(.large)
+            .padding(.top, 8)
         }
         .frame(
             maxWidth: .infinity
@@ -240,14 +245,7 @@ struct MetronomeView:
             .horizontal,
             30
         )
-        .background(
-            .quaternary.opacity(0.18),
-            in:
-                RoundedRectangle(
-                    cornerRadius: 16,
-                    style: .continuous
-                )
-        )
+        .macContentSurface(radius: MacLayout.heroRadius)
     }
 
     private var beatIndicator:
@@ -318,11 +316,7 @@ struct MetronomeView:
     private var rhythmSection:
         some View {
 
-        MacSection(
-            "リズム",
-            subtitle:
-                "拍子・サブディビジョン・拍ごとのアクセント"
-        ) {
+        MacSection("リズム") {
             VStack(
                 alignment: .leading,
                 spacing: 14
@@ -393,7 +387,7 @@ struct MetronomeView:
                 }
 
                 Picker(
-                    "Subdivision",
+                    "音符",
                     selection:
                         $model.subdivision
                 ) {
@@ -419,7 +413,9 @@ struct MetronomeView:
                         .secondary
                     )
 
-                    HStack(
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 38, maximum: 46), spacing: 7)],
+                        alignment: .leading,
                         spacing: 7
                     ) {
                         ForEach(
@@ -479,17 +475,13 @@ struct MetronomeView:
     private var clickSection:
         some View {
 
-        MacSection(
-            "クリック",
-            subtitle:
-                "音色とカウントイン"
-        ) {
+        MacSection("音色とカウントイン") {
             VStack(
                 alignment: .leading,
                 spacing: 14
             ) {
                 Picker(
-                    "Sound",
+                    "音色",
                     selection:
                         $model.clickSound
                 ) {
@@ -503,21 +495,12 @@ struct MetronomeView:
                 }
 
                 Stepper(
-                    "Count-in: \(model.countInBars) bars",
+                    "カウントイン: \(model.countInBars) 小節",
                     value:
                         $model.countInBars,
                     in: 0...4
                 )
 
-                MacMetric(
-                    "Current meter",
-                    value:
-                        "\(model.beatsPerBar)/\(model.beatUnit)",
-                    detail:
-                        model.subdivision.label,
-                    systemImage:
-                        "music.note"
-                )
             }
         }
     }
@@ -526,16 +509,16 @@ struct MetronomeView:
         some View {
 
         MacSection(
-            "Speed Trainer",
+            "テンポトレーニング",
             subtitle:
-                "一定小節ごとにテンポを上げる反復練習"
+                "指定した小節数ごとにテンポを上げる"
         ) {
             VStack(
                 alignment: .leading,
                 spacing: 12
             ) {
                 Toggle(
-                    "Speed Trainer",
+                    "徐々にテンポを上げる",
                     isOn:
                         $model
                             .speedTrainerEnabled
@@ -547,7 +530,7 @@ struct MetronomeView:
                     verticalSpacing: 9
                 ) {
                     trainerRow(
-                        "Start",
+                        "開始",
                         value:
                             $model
                                 .speedStartBpm,
@@ -556,7 +539,7 @@ struct MetronomeView:
                     )
 
                     trainerRow(
-                        "End",
+                        "目標",
                         value:
                             $model
                                 .speedEndBpm,
@@ -565,7 +548,7 @@ struct MetronomeView:
                     )
 
                     trainerRow(
-                        "Step",
+                        "増分",
                         value:
                             $model
                                 .speedStepBpm,
@@ -574,11 +557,11 @@ struct MetronomeView:
                     )
 
                     trainerRow(
-                        "Every",
+                        "間隔",
                         value:
                             $model
                                 .speedBarsPerStep,
-                        suffix: "bars",
+                        suffix: "小節",
                         range: 1...16
                     )
                 }
@@ -590,7 +573,7 @@ struct MetronomeView:
                 if model
                     .speedTrainerEnabled {
                     MacMetric(
-                        "Progress",
+                        "進捗",
                         value:
                             "\(model.speedCompletedBars) / \(model.speedBarsPerStep)",
                         detail:

@@ -1,106 +1,57 @@
 import XCTest
 @testable import GuitarToolsMacApp
 
-final class ChordWikiSearchParserTests:
-    XCTestCase {
+final class ChordWikiSearchParserTests: XCTestCase {
 
-    func testParsesWikiCGITitleWithoutViewCommand() {
-        let html =
-            """
-            <html>
-              <body>
-                <a href="/wiki.cgi?t=Little+Busters%21">
-                  <span>表示テキストは曲名と一致しなくてもよい</span>
-                </a>
-              </body>
-            </html>
-            """
-
-        let values =
-            ChordWikiSearchParser
-                .parse(html: html)
+    func testParsesChordWikiSearchResultURLs() {
+        let values = ChordWikiSearchParser.parse(
+            resultURLs: [
+                "https://ja.chordwiki.org/wiki/Little+Busters%21",
+                "https://ja.chordwiki.org/wiki.cgi?c=view&t=Song+Two&key=0"
+            ]
+        )
 
         XCTAssertEqual(
-            values.count,
-            1
+            values.map(\.title),
+            ["Little Busters!", "Song Two"]
         )
         XCTAssertEqual(
-            values.first?.title,
-            "Little Busters!"
-        )
-        XCTAssertEqual(
-            values.first?
-                .url
-                .absoluteString,
-            "https://ja.chordwiki.org/wiki/Little%20Busters!"
+            values.map(\.url.absoluteString),
+            [
+                "https://ja.chordwiki.org/wiki/Little%20Busters!",
+                "https://ja.chordwiki.org/wiki/Song%20Two"
+            ]
         )
     }
 
-    func testParsesPrettyWikiPath() {
-        let html =
-            """
-            <a href="/wiki/%E5%A4%8F%E5%BD%B1">夏影</a>
-            """
-
-        let values =
-            ChordWikiSearchParser
-                .parse(html: html)
-
-        XCTAssertEqual(
-            values.first?.title,
-            "夏影"
+    func testRejectsNonChordWikiAndUtilityURLs() {
+        let values = ChordWikiSearchParser.parse(
+            resultURLs: [
+                "https://example.com/wiki/Not-A-Song",
+                "https://ja.chordwiki.org/search.html?q=little",
+                "https://ja.chordwiki.org/wiki.cgi?c=history&t=Old-Song",
+                "https://ja.chordwiki.org/wiki.cgi?c=edit&t=Song"
+            ]
         )
+
+        XCTAssertTrue(values.isEmpty)
     }
 
-    func testAcceptsExplicitViewCommand() {
-        let html =
-            """
-            <a href="/wiki.cgi?c=view&amp;t=AIR">AIR</a>
-            """
-
-        let values =
-            ChordWikiSearchParser
-                .parse(html: html)
-
-        XCTAssertEqual(
-            values.first?.title,
-            "AIR"
+    func testDeduplicatesAndLimitsSearchResults() {
+        let duplicates = ChordWikiSearchParser.parse(
+            resultURLs: [
+                "https://ja.chordwiki.org/wiki/Test+Song",
+                "https://ja.chordwiki.org/wiki.cgi?t=Test+Song"
+            ]
         )
-    }
+        XCTAssertEqual(duplicates.map(\.title), ["Test Song"])
 
-    func testRejectsEditSearchAndHistoryLinks() {
-        let html =
-            """
-            <a href="/wiki.cgi?c=edit&amp;t=Song">edit</a>
-            <a href="/wiki.cgi?c=search&amp;q=Song">search</a>
-            <a href="/wiki.cgi?c=history&amp;t=Song">history</a>
-            """
-
-        XCTAssertTrue(
-            ChordWikiSearchParser
-                .parse(html: html)
-                .isEmpty
-        )
-    }
-
-    func testDeduplicatesSameTitleAcrossLinkForms() {
-        let html =
-            """
-            <a href="/wiki/Test%20Song">one</a>
-            <a href="/wiki.cgi?t=Test+Song">two</a>
-            """
-
-        let values =
-            ChordWikiSearchParser
-                .parse(html: html)
-
+        let urls = (0..<35).map {
+            "https://ja.chordwiki.org/wiki/Song+\($0)"
+        }
         XCTAssertEqual(
-            values.count,
-            1
-        )
-        XCTAssertEqual(
-            values.first?.title,
-            "Test Song"
+            ChordWikiSearchParser.parse(resultURLs: urls).count,
+            30
         )
     }
 }

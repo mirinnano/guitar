@@ -8,30 +8,28 @@ struct ChordFollowPracticeView:
     private var audio:
         AudioInputModel
 
-    @StateObject
+    @ObservedObject
     private var model:
         ChordFollowPracticeModel
 
     @State
     private var inspectorPresented =
-        true
+        false
+
+    private let practiceRequest: ChartPracticeRequest?
+    private let onPracticeRequestConsumed: ((UUID) -> Void)?
 
     init(
         audio: AudioInputModel,
-        preferencesStore:
-            AppPreferencesStore
+        model: ChordFollowPracticeModel,
+        practiceRequest: ChartPracticeRequest? = nil,
+        onPracticeRequestConsumed: ((UUID) -> Void)? = nil
     ) {
         self.audio = audio
+        self.practiceRequest = practiceRequest
+        self.onPracticeRequestConsumed = onPracticeRequestConsumed
 
-        _model =
-            StateObject(
-                wrappedValue:
-                    ChordFollowPracticeModel(
-                        audio: audio,
-                        preferencesStore:
-                            preferencesStore
-                    )
-            )
+        self.model = model
     }
 
     var body: some View {
@@ -45,15 +43,18 @@ struct ChordFollowPracticeView:
                 searchView
             }
         }
-        .navigationTitle(
-            model.chart?.title
-                ?? "譜面練習"
-        )
+        .navigationTitle("演奏判定")
+        .onDisappear { model.pause() }
+        .onChange(of: practiceRequest?.id, initial: true) { _, _ in
+            guard let practiceRequest else { return }
+            model.loadPractice(practiceRequest)
+            onPracticeRequestConsumed?(practiceRequest.id)
+        }
         .searchable(
             text: $model.query,
             placement: .toolbar,
             prompt:
-                "ChordWikiで曲名・アーティストを検索"
+                "曲名またはアーティスト名"
         )
         .onSubmit(
             of: .search
@@ -162,29 +163,18 @@ struct ChordFollowPracticeView:
                 maxWidth: .infinity,
                 maxHeight: .infinity
             )
-        } else if
-            let error =
-                model.errorMessage,
-            model.searchResults.isEmpty {
-            ContentUnavailableView(
-                "検索できませんでした",
-                systemImage:
-                    "exclamationmark.triangle",
-                description:
-                    Text(error)
-            )
-        } else if
-            model.searchResults.isEmpty {
-            ContentUnavailableView(
-                "ChordWikiから譜面を検索",
-                systemImage:
-                    "music.note.list",
-                description:
-                    Text(
-                        "ツールバーの検索欄に曲名またはアーティスト名を入力してください。"
-                    )
+        } else if model.searchResults.isEmpty {
+            ChartSearchStateView(
+                query: $model.query,
+                submittedQuery: model.lastSearchQuery,
+                error: model.errorMessage,
+                onSearch: model.search
             )
         } else {
+            VStack(spacing: 0) {
+            if let error = model.errorMessage {
+                ChartLoadErrorBanner(message: error)
+            }
             List(
                 model.searchResults
             ) {
@@ -245,6 +235,7 @@ struct ChordFollowPracticeView:
                     3
                 )
             }
+            }
         }
     }
 
@@ -260,8 +251,7 @@ struct ChordFollowPracticeView:
 
             PracticeFeedbackBar(
                 expected:
-                    model.currentEvent?
-                        .symbol,
+                    model.currentEvent.flatMap { $0.isPlayable ? $0.symbol : nil },
                 pending:
                     model.pendingExpected?
                         .symbol,
@@ -272,58 +262,44 @@ struct ChordFollowPracticeView:
                 lastAttempt:
                     model.lastAttempt
             )
-            .padding(
-                .horizontal,
-                22
-            )
-            .padding(
-                .vertical,
-                12
-            )
+            .padding(20)
+            .macContentSurface()
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
 
-            Divider()
-
-            chartScrollView(
-                chart
-            )
-
-            Divider()
-
+            chartScrollView(chart)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             transport
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 14)
         }
     }
 
     private func chartHeader(
         _ chart: ChordChart
     ) -> some View {
-        HStack(
-            alignment: .firstTextBaseline,
-            spacing: 16
-        ) {
+        VStack(alignment: .leading, spacing: 6) {
             VStack(
                 alignment: .leading,
                 spacing: 3
             ) {
                 Text(chart.title)
-                    .font(
-                        .title2
-                            .weight(
-                                .semibold
-                            )
-                    )
+                    .font(.system(size: 24, weight: .bold))
+                    .lineLimit(2)
+                    .accessibilityAddTraits(.isHeader)
 
                 if !chart.artist
                     .isEmpty {
-                    Text(
-                        chart.artist
-                    )
-                    .foregroundStyle(
-                        .secondary
-                    )
+                    Text(chart.artist)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .foregroundStyle(.secondary)
                 }
-            }
 
-            Spacer()
+                ChartFingeringContext(chart: chart)
+            }
 
             HStack(
                 spacing: 12
@@ -331,7 +307,7 @@ struct ChordFollowPracticeView:
                 if let key =
                     chart.key {
                     Text(
-                        "Key \(key)"
+                        "キー \(key)"
                     )
                 }
 
@@ -351,11 +327,12 @@ struct ChordFollowPracticeView:
                     )
                 }
             }
-            .font(.callout)
+            .font(.caption)
             .foregroundStyle(
                 .secondary
             )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(
             .horizontal,
             22
@@ -392,7 +369,8 @@ struct ChordFollowPracticeView:
                             lineIndex:
                                 lineIndex,
                             activeEvent:
-                                model.currentEvent
+                                model.currentEvent,
+                            previousSymbols: ChartVoicingContext.previousSymbols(timeline: model.timeline, lineIndex: lineIndex)
                         )
                         .id(lineIndex)
                     }
@@ -412,12 +390,18 @@ struct ChordFollowPracticeView:
                         .leading
                 )
             }
+            .task {
+                guard model.autoScroll, let line = model.currentEvent?.lineIndex else { return }
+                // ScrollViewReader needs the lazy rows laid out before an initial jump.
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled else { return }
+                proxy.scrollTo(line, anchor: .center)
+            }
             .onChange(
                 of:
                     model.currentEvent?
                         .lineIndex
-            ) {
-                lineIndex in
+            ) { _, lineIndex in
 
                 guard
                     model.autoScroll,
@@ -444,8 +428,22 @@ struct ChordFollowPracticeView:
         some View {
 
         VStack(
-            spacing: 5
+            spacing: 8
         ) {
+            HStack(spacing: 12) {
+                Button(model.isPlaying ? "一時停止" : "演奏判定を開始",
+                       systemImage: model.isPlaying ? "pause.fill" : "play.fill",
+                       action: model.togglePlayback)
+                    .buttonStyle(.borderedProminent)
+                Text("マイク入力で判定します。音楽は再生されません。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            if let error = audio.errorMessage {
+                Text(error).font(.caption).foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Slider(
                 value:
                     Binding(
@@ -508,9 +506,7 @@ struct ChordFollowPracticeView:
             .vertical,
             9
         )
-        .background(
-            .bar
-        )
+        .macGlassSurface()
     }
 
     @ToolbarContentBuilder
@@ -639,87 +635,59 @@ private struct PracticeFeedbackBar:
         PracticeAttempt?
 
     var body: some View {
-        HStack(
-            spacing: 16
-        ) {
-            VStack(
-                alignment: .leading,
-                spacing: 2
-            ) {
-                Text("期待")
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 24) {
+                chordComparison
+                feedback
+                Spacer(minLength: 0)
+            }
+            VStack(alignment: .leading, spacing: 16) {
+                chordComparison
+                feedback
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var chordComparison: some View {
+        HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("弾くコード")
                     .font(.caption)
-                    .foregroundStyle(
-                        .secondary
-                    )
-
-                Text(
-                    pending
-                    ?? expected
-                    ?? "—"
-                )
-                .font(
-                    .title3
-                        .weight(.semibold)
-                )
+                    .foregroundStyle(.secondary)
+                Text(pending ?? expected ?? "—")
+                    .font(.system(size: 32, weight: .semibold, design: .rounded))
             }
-            .frame(
-                minWidth: 80,
-                alignment: .leading
-            )
 
-            Image(
-                systemName:
-                    "arrow.right"
-            )
-            .foregroundStyle(
-                .tertiary
-            )
+            Image(systemName: "arrow.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
 
-            VStack(
-                alignment: .leading,
-                spacing: 2
-            ) {
-                Text("検出")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("検出したコード")
                     .font(.caption)
-                    .foregroundStyle(
-                        .secondary
-                    )
-
-                Text(
-                    detected ?? "—"
-                )
-                .font(
-                    .title3
-                        .weight(.semibold)
-                )
+                    .foregroundStyle(.secondary)
+                Text(detected ?? "—")
+                    .font(.system(size: 28, weight: .medium, design: .rounded))
             }
-            .frame(
-                minWidth: 80,
-                alignment: .leading
-            )
+        }
+    }
 
-            Divider()
-                .frame(height: 34)
-
-            if let attempt =
-                lastAttempt {
-                harmonyPill(
-                    attempt
-                )
-
-                timingPill(
-                    attempt
-                )
-            } else {
-                MacStatusPill(
-                    text: "演奏待ち",
-                    systemImage:
-                        "waveform",
-                    role: .neutral
-                )
+    @ViewBuilder
+    private var feedback: some View {
+        if let attempt = lastAttempt {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    harmonyPill(attempt)
+                    timingPill(attempt)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    harmonyPill(attempt)
+                    timingPill(attempt)
+                }
             }
-
-            Spacer()
+        } else {
+            MacStatusPill(text: "演奏待ち", systemImage: "waveform")
         }
     }
 
@@ -820,6 +788,7 @@ private struct ChartPracticeLineView:
     let lineIndex: Int
     let activeEvent:
         TimedChordEvent?
+    let previousSymbols: [Int: String]
 
     var body: some View {
         switch line.kind {
@@ -850,11 +819,15 @@ private struct ChartPracticeLineView:
     private var contentLine:
         some View {
 
-        HStack(
-            alignment: .top,
-            spacing: 0
+        ScrollView(
+            .horizontal,
+            showsIndicators: false
         ) {
-            ForEach(
+            HStack(
+                alignment: .top,
+                spacing: 0
+            ) {
+                ForEach(
                 Array(
                     line.segments
                         .enumerated()
@@ -868,6 +841,18 @@ private struct ChartPracticeLineView:
                     alignment: .leading,
                     spacing: 2
                 ) {
+                    if let chord = segment.chord {
+                        InlineChordFingering(
+                            chord: chord, previousSymbol: previousSymbols[segmentIndex]
+                        )
+                    } else {
+                        Color.clear
+                            .frame(
+                                width: 1,
+                                height: InlineChordFingering.height
+                            )
+                    }
+
                     if let chord =
                         segment.chord {
                         Text(chord)
@@ -940,12 +925,13 @@ private struct ChartPracticeLineView:
                         vertical: false
                     )
                 }
+                }
+                .padding(
+                    .vertical,
+                    2
+                )
             }
         }
-        .padding(
-            .vertical,
-            2
-        )
     }
 
     private func isActive(
@@ -977,7 +963,7 @@ private struct PracticeInspectorView:
                 "現在"
             ) {
                 LabeledContent(
-                    "期待コード",
+                    "弾くコード",
                     value:
                         model
                             .pendingExpected?
@@ -989,7 +975,7 @@ private struct PracticeInspectorView:
                 )
 
                 LabeledContent(
-                    "検出コード",
+                    "検出したコード",
                     value:
                         audio.stableChord
                         ?? audio.estimate?
@@ -1023,7 +1009,7 @@ private struct PracticeInspectorView:
             }
 
             Section(
-                "Audio Input"
+                "オーディオ入力"
             ) {
                 LabeledContent(
                     "状態",
@@ -1109,7 +1095,7 @@ private struct PracticeInspectorView:
                 ) {
                     HStack {
                         Text(
-                            "On Time幅"
+                            "タイミングの許容幅"
                         )
 
                         Spacer()
@@ -1143,7 +1129,7 @@ private struct PracticeInspectorView:
             }
 
             Section(
-                "セッション"
+                "練習結果"
             ) {
                 let stats =
                     model.statistics
@@ -1158,7 +1144,7 @@ private struct PracticeInspectorView:
                 )
 
                 LabeledContent(
-                    "On Time率",
+                    "タイミング正答率",
                     value:
                         percent(
                             stats

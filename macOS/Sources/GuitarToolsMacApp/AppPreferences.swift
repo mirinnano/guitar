@@ -32,6 +32,10 @@ struct AudioPreferences:
     var inputDeviceUID:
         String?
 
+    // Optional so pre-output-selection JSON continues to decode unchanged.
+    var outputDeviceUID:
+        String?
+
     var selectedChannel = 0
 
     var inputLatencyCompensationMs =
@@ -194,12 +198,9 @@ final class AppPreferencesStore:
     ) -> AppPreferences {
         var result = input
 
-        result.audio.selectedChannel =
-            max(
-                result.audio
-                    .selectedChannel,
-                0
-            )
+        // Bound corrupt preferences, not the currently connected device: a
+        // saved UR12 Ch 2 must survive unplugging or a mono default input.
+        result.audio.selectedChannel = min(max(result.audio.selectedChannel, 0), 63)
 
         result.audio
             .inputLatencyCompensationMs =

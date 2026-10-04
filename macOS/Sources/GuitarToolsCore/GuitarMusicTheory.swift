@@ -847,6 +847,27 @@ public enum GuitarChordQuality:
     case add9 = "add9"
     case diminished = "dim"
     case augmented = "aug"
+    case halfDiminished7 = "m7(b5)"
+    case diminished7 = "dim7"
+    case dominant7Sus4 = "7sus4"
+    case dominant7Flat9 = "7(b9)"
+    case dominant7Sharp9 = "7(#9)"
+    case dominant7Sus4Flat9 = "7sus4(b9)"
+    case minorMajor7 = "m(maj7)"
+    case minorAdd9 = "madd9"
+    case majorSixNine = "6/9"
+    case minorSixNine = "m6/9"
+    case add11 = "add11"
+    case dominant11 = "11"
+    case minor11 = "m11"
+    case dominant13 = "13"
+    case minor13 = "m13"
+    case dominant7Flat5 = "7(b5)"
+    case dominant7Sharp5 = "7(#5)"
+    case dominant7Flat13 = "7(b13)"
+    case dominant7Sharp11 = "7(#11)"
+    case major7Sharp11 = "maj7(#11)"
+    case dominant9Sus4 = "9sus4"
 
     public var id: String {
         rawValue.isEmpty
@@ -894,6 +915,35 @@ public enum GuitarChordQuality:
             [0, 3, 6]
         case .augmented:
             [0, 4, 8]
+        case .halfDiminished7:
+            [0, 3, 6, 10]
+        case .diminished7:
+            [0, 3, 6, 9]
+        case .dominant7Sus4:
+            [0, 5, 7, 10]
+        case .dominant7Flat9:
+            [0, 4, 7, 10, 13]
+        case .dominant7Sharp9:
+            [0, 4, 7, 10, 15]
+        case .dominant7Sus4Flat9:
+            [0, 5, 7, 10, 13]
+        case .minorMajor7:
+            [0, 3, 7, 11]
+        case .minorAdd9:
+            [0, 3, 7, 14]
+        case .majorSixNine: [0, 4, 7, 9, 14]
+        case .minorSixNine: [0, 3, 7, 9, 14]
+        case .add11: [0, 4, 7, 17]
+        case .dominant11: [0, 4, 7, 10, 14, 17]
+        case .minor11: [0, 3, 7, 10, 14, 17]
+        case .dominant13: [0, 4, 7, 10, 14, 17, 21]
+        case .minor13: [0, 3, 7, 10, 14, 17, 21]
+        case .dominant7Flat5: [0, 4, 6, 10]
+        case .dominant7Sharp5: [0, 4, 8, 10]
+        case .dominant7Flat13: [0, 4, 7, 10, 20]
+        case .dominant7Sharp11: [0, 4, 7, 10, 18]
+        case .major7Sharp11: [0, 4, 7, 11, 18]
+        case .dominant9Sus4: [0, 5, 7, 10, 14]
         }
     }
 }
@@ -974,578 +1024,24 @@ public struct GuitarChordShape:
 
 public enum CommonGuitarChords {
 
-    private struct Template {
-        let offsets: [Int]
-        let fingers: [Int?]
-        let fullBarre: Bool
-    }
-
-    private static let templates:
-        [GuitarChordQuality:
-            Template] = [
-        .major:
-            .init(
-                offsets:
-                    [0, 2, 2, 1, 0, 0],
-                fingers:
-                    [1, 3, 4, 2, 1, 1],
-                fullBarre: true
-            ),
-        .minor:
-            .init(
-                offsets:
-                    [0, 2, 2, 0, 0, 0],
-                fingers:
-                    [1, 3, 4, 1, 1, 1],
-                fullBarre: true
-            ),
-        .power5:
-            .init(
-                offsets:
-                    [0, 2, 2, -1, -1, -1],
-                fingers:
-                    [1, 3, 4, nil, nil, nil],
-                fullBarre: false
-            ),
-        .major6:
-            .init(
-                offsets:
-                    [0, 2, 2, 1, 2, 0],
-                fingers:
-                    [1, 2, 3, 1, 4, 1],
-                fullBarre: true
-            ),
-        .minor6:
-            .init(
-                offsets:
-                    [0, 2, 2, 0, 2, 0],
-                fingers:
-                    [1, 2, 3, 1, 4, 1],
-                fullBarre: true
-            ),
-        .dominant7:
-            .init(
-                offsets:
-                    [0, 2, 0, 1, 0, 0],
-                fingers:
-                    [1, 3, 1, 2, 1, 1],
-                fullBarre: true
-            ),
-        .major7:
-            .init(
-                offsets:
-                    [0, 2, 1, 1, 0, 0],
-                fingers:
-                    [1, 3, 2, 2, 1, 1],
-                fullBarre: true
-            ),
-        .minor7:
-            .init(
-                offsets:
-                    [0, 2, 0, 0, 0, 0],
-                fingers:
-                    [1, 3, 1, 1, 1, 1],
-                fullBarre: true
-            ),
-        .dominant9:
-            .init(
-                offsets:
-                    [0, 2, 0, 1, 0, 2],
-                fingers:
-                    [1, 3, 1, 2, 1, 4],
-                fullBarre: true
-            ),
-        .major9:
-            .init(
-                offsets:
-                    [0, 2, 1, 1, 0, 2],
-                fingers:
-                    [1, 3, 2, 2, 1, 4],
-                fullBarre: true
-            ),
-        .minor9:
-            .init(
-                offsets:
-                    [0, 2, 0, 0, 0, 2],
-                fingers:
-                    [1, 3, 1, 1, 1, 4],
-                fullBarre: true
-            ),
-        .sus2:
-            .init(
-                offsets:
-                    [0, 2, 4, 4, 0, 0],
-                fingers:
-                    [1, 2, 3, 4, 1, 1],
-                fullBarre: true
-            ),
-        .sus4:
-            .init(
-                offsets:
-                    [0, 2, 2, 2, 0, 0],
-                fingers:
-                    [1, 3, 3, 3, 1, 1],
-                fullBarre: true
-            ),
-        .add9:
-            .init(
-                offsets:
-                    [0, 2, 2, 1, 0, 2],
-                fingers:
-                    [1, 2, 3, 1, 1, 4],
-                fullBarre: true
-            ),
-        .diminished:
-            .init(
-                offsets:
-                    [0, 1, 2, 0, -1, -1],
-                fingers:
-                    [1, 2, 4, 3, nil, nil],
-                fullBarre: false
-            ),
-        .augmented:
-            .init(
-                offsets:
-                    [0, 3, 2, 1, 1, 0],
-                fingers:
-                    [1, 4, 3, 2, 2, 1],
-                fullBarre: true
-            )
-    ]
-
-    public static let all:
-        [GuitarChordShape] =
-        GuitarNote.allCases
-            .flatMap {
-                root in
-
-                GuitarChordQuality
-                    .allCases
-                    .map {
-                        quality in
-
-                        preferredShape(
-                            root: root,
-                            quality:
-                                quality
-                        ) ??
-                        movableShape(
-                            root: root,
-                            quality:
-                                quality
-                        )
-                    }
-            }
-
-    public static func forRoot(
-        _ root: GuitarNote
-    ) -> [GuitarChordShape] {
-        all.filter {
-            $0.chord.root ==
-            root
+    public static let all: [GuitarChordShape] = GuitarNote.allCases.flatMap { root in
+        GuitarChordQuality.allCases.compactMap { quality in
+            NoCapoGuitarVoicings.resolve(chord: GuitarChord(root: root, quality: quality))
         }
     }
 
-    public static func shape(
-        named name: String
-    ) -> GuitarChordShape? {
-        guard let normalized =
-            normalizeChordLookup(name)
-        else {
-            return nil
-        }
-
-        return all.first {
-            $0.name ==
-            normalized
-        }
+    public static func forRoot(_ root: GuitarNote) -> [GuitarChordShape] {
+        all.filter { $0.chord.root == root }
     }
 
-    private static func movableShape(
-        root: GuitarNote,
-        quality:
-            GuitarChordQuality
-    ) -> GuitarChordShape {
-        let template =
-            templates[quality]!
-
-        let rootFret =
-            (
-                root.rawValue -
-                GuitarNote.e.rawValue +
-                12
-            ) % 12
-
-        let frets =
-            template.offsets.map {
-                $0 < 0
-                ? -1
-                : rootFret + $0
-            }
-
-        let barres:
-            [GuitarBarre] =
-            rootFret > 0 &&
-            template.fullBarre
-            ? [
-                GuitarBarre(
-                    fret: rootFret,
-                    fromString: 6,
-                    toString: 1,
-                    finger: 1
-                )
-            ]
-            : []
-
-        let fingers =
-            rootFret == 0
-            ? template.fingers
-                .enumerated()
-                .map {
-                    index,
-                    finger in
-
-                    frets[index] == 0
-                    ? nil
-                    : finger
-                }
-            : template.fingers
-
-        return GuitarChordShape(
-            chord:
-                GuitarChord(
-                    root: root,
-                    quality: quality
-                ),
-            frets: frets,
-            fingers: fingers,
-            barres: barres,
-            baseFret:
-                max(rootFret, 1)
-        )
-    }
-
-    private static func preferredShape(
-        root: GuitarNote,
-        quality:
-            GuitarChordQuality
-    ) -> GuitarChordShape? {
-        let key =
-            root.displayName +
-            quality.rawValue
-
-        let values:
-            [String:
-                (
-                    [Int],
-                    [Int?]
-                )] = [
-            "C":
-                (
-                    [-1, 3, 2, 0, 1, 0],
-                    [nil, 3, 2, nil, 1, nil]
-                ),
-            "D":
-                (
-                    [-1, -1, 0, 2, 3, 2],
-                    [nil, nil, nil, 1, 3, 2]
-                ),
-            "E":
-                (
-                    [0, 2, 2, 1, 0, 0],
-                    [nil, 2, 3, 1, nil, nil]
-                ),
-            "G":
-                (
-                    [3, 2, 0, 0, 0, 3],
-                    [2, 1, nil, nil, nil, 3]
-                ),
-            "A":
-                (
-                    [-1, 0, 2, 2, 2, 0],
-                    [nil, nil, 1, 2, 3, nil]
-                ),
-            "Am":
-                (
-                    [-1, 0, 2, 2, 1, 0],
-                    [nil, nil, 2, 3, 1, nil]
-                ),
-            "Dm":
-                (
-                    [-1, -1, 0, 2, 3, 1],
-                    [nil, nil, nil, 2, 3, 1]
-                ),
-            "Em":
-                (
-                    [0, 2, 2, 0, 0, 0],
-                    [nil, 2, 3, nil, nil, nil]
-                ),
-            "C7":
-                (
-                    [-1, 3, 2, 3, 1, 0],
-                    [nil, 3, 2, 4, 1, nil]
-                ),
-            "D7":
-                (
-                    [-1, -1, 0, 2, 1, 2],
-                    [nil, nil, nil, 2, 1, 3]
-                ),
-            "E7":
-                (
-                    [0, 2, 0, 1, 0, 0],
-                    [nil, 2, nil, 1, nil, nil]
-                ),
-            "G7":
-                (
-                    [3, 2, 0, 0, 0, 1],
-                    [3, 2, nil, nil, nil, 1]
-                ),
-            "A7":
-                (
-                    [-1, 0, 2, 0, 2, 0],
-                    [nil, nil, 1, nil, 2, nil]
-                ),
-            "B7":
-                (
-                    [-1, 2, 1, 2, 0, 2],
-                    [nil, 2, 1, 3, nil, 4]
-                ),
-            "Cmaj7":
-                (
-                    [-1, 3, 2, 0, 0, 0],
-                    [nil, 3, 2, nil, nil, nil]
-                ),
-            "Am7":
-                (
-                    [-1, 0, 2, 0, 1, 0],
-                    [nil, nil, 2, nil, 1, nil]
-                ),
-            "Em7":
-                (
-                    [0, 2, 0, 0, 0, 0],
-                    [nil, 2, nil, nil, nil, nil]
-                ),
-            "Dsus2":
-                (
-                    [-1, -1, 0, 2, 3, 0],
-                    [nil, nil, nil, 1, 2, nil]
-                ),
-            "Asus2":
-                (
-                    [-1, 0, 2, 2, 0, 0],
-                    [nil, nil, 1, 2, nil, nil]
-                ),
-            "Dsus4":
-                (
-                    [-1, -1, 0, 2, 3, 3],
-                    [nil, nil, nil, 1, 2, 3]
-                ),
-            "Asus4":
-                (
-                    [-1, 0, 2, 2, 3, 0],
-                    [nil, nil, 1, 2, 3, nil]
-                ),
-            "Cadd9":
-                (
-                    [-1, 3, 2, 0, 3, 0],
-                    [nil, 2, 1, nil, 3, nil]
-                )
-        ]
-
-        guard let value =
-            values[key]
-        else {
-            return nil
-        }
-
-        return GuitarChordShape(
-            chord:
-                GuitarChord(
-                    root: root,
-                    quality: quality
-                ),
-            frets: value.0,
-            fingers: value.1,
-            barres: [],
-            baseFret: 1
-        )
+    public static func shape(named name: String) -> GuitarChordShape? {
+        guard let symbol = ParsedGuitarChordSymbol(name) else { return nil }
+        return NoCapoGuitarVoicings.resolve(chord: symbol.chord, bass: symbol.bass)
     }
 }
 
-public func normalizeChordLookup(
-    _ raw: String
-) -> String? {
-    var symbol =
-        raw
-            .trimmingCharacters(
-                in: .whitespaces
-            )
-            .replacingOccurrences(
-                of: "♯",
-                with: "#"
-            )
-            .replacingOccurrences(
-                of: "♭",
-                with: "b"
-            )
-
-    if symbol.uppercased() ==
-        "N.C." ||
-        symbol.uppercased() ==
-        "NC" {
-        return nil
-    }
-
-    symbol =
-        String(
-            symbol.split(
-                separator: "/"
-            ).first ?? ""
-        )
-        .trimmingCharacters(
-            in: .whitespaces
-        )
-
-    let pattern =
-        #"^([A-Ga-g])([#b]?)(.*)$"#
-
-    guard
-        let regex =
-            try? NSRegularExpression(
-                pattern: pattern
-            )
-    else {
-        return nil
-    }
-
-    let ns =
-        symbol as NSString
-
-    guard let match =
-        regex.firstMatch(
-            in: symbol,
-            range: NSRange(
-                location: 0,
-                length: ns.length
-            )
-        )
-    else {
-        return nil
-    }
-
-    let letter =
-        ns.substring(
-            with:
-                match.range(at: 1)
-        )
-        .uppercased()
-
-    let accidental =
-        ns.substring(
-            with:
-                match.range(at: 2)
-        )
-
-    var suffix =
-        ns.substring(
-            with:
-                match.range(at: 3)
-        )
-        .trimmingCharacters(
-            in: .whitespaces
-        )
-        .replacingOccurrences(
-            of: "△",
-            with: "maj"
-        )
-        .replacingOccurrences(
-            of: "M",
-            with: "maj"
-        )
-        .replacingOccurrences(
-            of: "(",
-            with: ""
-        )
-        .replacingOccurrences(
-            of: ")",
-            with: ""
-        )
-        .replacingOccurrences(
-            of: " ",
-            with: ""
-        )
-
-    let base:
-        Int
-
-    switch letter {
-    case "C": base = 0
-    case "D": base = 2
-    case "E": base = 4
-    case "F": base = 5
-    case "G": base = 7
-    case "A": base = 9
-    case "B": base = 11
-    default:
-        return nil
-    }
-
-    let offset =
-        accidental == "#"
-        ? 1
-        : accidental == "b"
-        ? -1
-        : 0
-
-    let root =
-        GuitarNote(
-            rawValue:
-                (
-                    base +
-                    offset +
-                    12
-                ) % 12
-        )!
-        .displayName
-
-    suffix =
-        suffix.lowercased()
-
-    let allowed:
-        Set<String> = [
-            "",
-            "m",
-            "5",
-            "6",
-            "m6",
-            "7",
-            "maj7",
-            "m7",
-            "9",
-            "maj9",
-            "m9",
-            "sus2",
-            "sus4",
-            "add9",
-            "dim",
-            "aug"
-        ]
-
-    if suffix == "sus" {
-        suffix = "sus4"
-    }
-
-    if suffix == "+" {
-        suffix = "aug"
-    }
-
-    guard
-        allowed.contains(
-            suffix
-        )
-    else {
-        return nil
-    }
-
-    return root + suffix
+/// Canonical root/quality key. Bass is parsed and validated, but is not part of
+/// this legacy catalog key; shape(named:) resolves the complete symbol instead.
+public func normalizeChordLookup(_ raw: String) -> String? {
+    ParsedGuitarChordSymbol(raw)?.chord.name
 }

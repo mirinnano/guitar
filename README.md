@@ -1,6 +1,7 @@
 # Guitar Tools
 
-Android版（Kotlin + Jetpack Compose / Material 3）を中心に開発しているギター練習ツールです。macOS版はSwiftUIで、Android版の機能を引き継ぎつつオーディオインターフェース入力を活用するネイティブアプリとして開発予定です。
+Android 版（Kotlin + Jetpack Compose / Material 3）と macOS 版（SwiftUI）のギター練習ツールです。
+macOS 版ではオーディオインターフェース入力を練習の解析に使います。
 
 ## 機能
 
@@ -94,7 +95,7 @@ macOS版は **SwiftUI** で開発し、Android版の延長線に置きます。
 - Android版のメトロノーム / チューナー / コード / ChordWiki / 指板 / 練習機能をMacへ展開
 - デスクトップ向けのNavigationSplitView・リサイズ可能な譜面レイアウト
 - オーディオインターフェースからギター入力
-- AVAudioEngineを第一候補に、入力レベル・チューナー・オンセット検出へ利用
+- CoreAudio の入力専用 AUHAL で入力デバイスとチャンネルを指定し、入力レベル、チューナー、オンセット検出へ利用
 - 高精度同期アンカー / piecewise time-warpをMacでも利用
 - 将来的に「弾いた瞬間が何ms早い/遅いか」を表示するタイミング練習
 - 必要に応じてコード内容の判定も追加
@@ -108,15 +109,34 @@ macOS版は **SwiftUI** で開発し、Android版の延長線に置きます。
 Android版の現行ユーザー機能をSwiftUIへ移植済みです。
 
 - **Metronome**: 30–300 BPM、1–12拍子、4分/8分/3連/16分、Accent/Normal/Mute、Digital/Wood/Hi-Hat、count-in、Tap Tempo、Speed Trainer
-- **Tuner**: YIN pitch detection、Standard / Drop D / Drop C# / Drop C / E♭ Standard / D Standard / Open G / DADGAD / Custom、A4 400–480 Hz、感度、弦ロック、基準音
-- **Chords**: 12 root × 16 quality = 192コード、検索、押さえ方図
-- **ChordWiki**: 検索、ネイティブ譜面表示、押さえ方、BPM自動スクロール、現在コード、小節表示、YouTube小窓、アンカー同期、piecewise time-warp、同期メトロノーム、アンカー永続化
+- **Tuner**: YIN pitch detection、Standard / Drop D / Drop C# / Drop C / E♭ Standard / D Standard / Open G / DADGAD / Custom、A4 400–480 Hz、感度、弦ロック、基準音の出力デバイス選択
+- **Chords**: 12 root × 37 quality = 444 コード、検索、カポなしの構成音と最低音を検証した押さえ方、定番フォーム優先、別フォームの選択保存、構成音と弦ごとの音名・周波数
+- **Chord learning**: 奏者がネックを見下ろすコード図（上が 1 弦、下が 6 弦、左がヘッド側）、図を隠す想起練習、答え合わせ、後日の復習、曲のコードからの練習開始。練習結果は自己確認であり、自動採点ではありません
+- **ChordWiki**: 曲検索、コードごとの押さえ方を併記したネイティブ譜面、カポ指定の実音変換、BPM 自動スクロール、現在コード、小節表示、YouTube 小窓、アンカー同期、piecewise time-warp、同期メトロノーム、アンカー永続化、区間リピート、30 秒のコード切替練習
 - **Fretboard**: Note / Scale / Chord、Major / Minor / Pentatonic / Blues / Dorian / Mixolydian、interval表示、各種tuning、12–24 frets、左利き
 - **Practice**: コード進行編集、各step拍数、ChordPro import、MusicBrainz曲検索、ローカルbacking track、再生位置同期、offset
-- **Mac extension**: CoreAudio入力デバイス/チャンネル選択、ホットプラグ追従、入力レイテンシ表示、リアルタイムコード判定、オンセット時刻、期待コード比較、早い/遅いms評価、セッション統計
+- **Mac extension**: CoreAudio 入力デバイスとチャンネルの選択、UR12 の INPUT 2（HI-Z）設定、全チャンネルの入力メーター、PCM 受信表示、ホットプラグ追従、入力レイテンシ表示、リアルタイムコード判定、オンセット時刻、期待コード比較、早い/遅い ms 評価、セッション統計
 - **Persistence**: メトロノーム / チューナー / 入力デバイス / チャンネル / 練習設定を保持し、練習セッションをversioned JSONで保存
 
 Mac版は録音・ミキサー・アンプシム等を持たず、オーディオ入力を練習解析へ使います。
+
+定番フォームでも、C7 の完全 5 度などを省略する場合は図の下に省略音を表示します。
+コードの理論上の構成音や、スラッシュで指定した最低音は別に保持します。
+生成した参考フォームは、定番フォームと区別して表示します。
+
+### UR12 のギター入力
+
+1. ギターを本体の INPUT 2（HI-Z）へ接続し、GAIN 2 を調整します。
+2. チューナーの「UR12のギター入出力を設定」で入力と基準音の出力を選びます。
+3. 「入力開始」を押し、必要なら macOS のマイク権限を許可します。
+4. PCM 受信フレーム数と Ch2 HI-Z ギターのメーターを確認します。
+   Ch1 MIC はギター用の入力ではありません。
+
+選択した機器が未接続でも、アプリは内蔵マイクや Ch1 へ自動で切り替えません。
+入力音を聴くには本体の DIRECT MONITOR を使います。
+基準音の出力設定は、動画やメトロノームの出力先を変更しません。
+
+練習法の調査と、根拠の限界を含む練習計画は [エレキギター練習ガイド](docs/electric-guitar-practice-guide.md) を参照してください。
 
 ### macOS Release
 

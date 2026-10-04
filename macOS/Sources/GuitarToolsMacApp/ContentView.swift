@@ -5,6 +5,8 @@ enum MacTool:
     CaseIterable,
     Identifiable {
 
+    case home =
+        "はじめに"
     case metronome =
         "メトロノーム"
     case tuner =
@@ -16,13 +18,11 @@ enum MacTool:
     case fretboard =
         "指板"
     case practice =
-        "練習"
+        "コード進行"
     case chordFollow =
         "演奏判定"
     case chordDetection =
         "コード判定"
-    case roadmap =
-        "Mac版"
 
     var id: String {
         rawValue
@@ -30,6 +30,8 @@ enum MacTool:
 
     var systemImage: String {
         switch self {
+        case .home:
+            "house"
         case .metronome:
             "metronome"
         case .tuner:
@@ -46,8 +48,6 @@ enum MacTool:
             "scope"
         case .chordDetection:
             "waveform.badge.magnifyingglass"
-        case .roadmap:
-            "swift"
         }
     }
 }
@@ -55,108 +55,80 @@ enum MacTool:
 struct ContentView: View {
 
     @StateObject
-    private var audio =
-        AudioInputModel()
+    private var audio: AudioInputModel
 
     @StateObject
-    private var preferences =
-        AppPreferencesStore()
+    private var preferences: AppPreferencesStore
+
+    @StateObject private var output: AudioOutputModel
 
     @State
     private var selection:
         MacTool? =
-        .metronome
+        .home
+
+    @State private var practiceRequest: ChartPracticeRequest?
+    @StateObject private var chartModel = ChordWikiViewerModel()
+    @StateObject private var practiceModel: ChordFollowPracticeModel
+    @StateObject private var chordLearning = ChordLearningModel()
+
+    init() {
+        let audio = AudioInputModel()
+        let preferences = AppPreferencesStore()
+        _audio = StateObject(wrappedValue: audio)
+        _preferences = StateObject(wrappedValue: preferences)
+        _output = StateObject(wrappedValue: AudioOutputModel(preferencesStore: preferences))
+        _practiceModel = StateObject(wrappedValue: ChordFollowPracticeModel(
+            audio: audio, preferencesStore: preferences
+        ))
+    }
 
     var body: some View {
         NavigationSplitView {
-            VStack(
-                spacing: 0
-            ) {
-                List(
-                    selection: $selection
-                ) {
-                    Section(
-                        "Practice"
-                    ) {
-                        navigationItem(
-                            .metronome
-                        )
-                        navigationItem(
-                            .tuner
-                        )
-                        navigationItem(
-                            .charts
-                        )
-                        navigationItem(
-                            .practice
-                        )
-                        navigationItem(
-                            .chordFollow
-                        )
-                    }
+            List(selection: $selection) {
+                navigationItem(.home)
 
-                    Section(
-                        "Reference"
-                    ) {
-                        navigationItem(
-                            .chords
-                        )
-                        navigationItem(
-                            .fretboard
-                        )
-                    }
-
-                    Section(
-                        "Audio"
-                    ) {
-                        navigationItem(
-                            .chordDetection
-                        )
-                    }
-
-                    Section(
-                        "Project"
-                    ) {
-                        navigationItem(
-                            .roadmap
-                        )
-                    }
+                Section("練習") {
+                    navigationItem(.metronome)
+                    navigationItem(.tuner)
+                    navigationItem(.chordFollow)
+                    navigationItem(.practice)
                 }
-                .listStyle(.sidebar)
 
-                Divider()
+                Section("ライブラリ") {
+                    navigationItem(.charts)
+                    navigationItem(.chords)
+                    navigationItem(.fretboard)
+                }
 
+                Section("オーディオ") {
+                    navigationItem(.chordDetection)
+                }
+
+            }
+            .listStyle(.sidebar)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 audioFooter
+                    .padding(12)
             }
             .navigationTitle(
                 "Guitar Tools"
             )
             .navigationSplitViewColumnWidth(
                 min: 210,
-                ideal: 238,
+                ideal: 244,
                 max: 300
             )
         } detail: {
             detail
+                .background(Color(nsColor: .windowBackgroundColor))
         }
         .navigationSplitViewStyle(
             .balanced
         )
         .onAppear {
-            audio.selectInputDevice(
-                uid:
-                    preferences
-                        .value
-                        .audio
-                        .inputDeviceUID
-            )
-
-            audio.selectInputChannel(
-                preferences
-                    .value
-                    .audio
-                    .selectedChannel
-            )
+            let savedAudio = preferences.value.audio
+            audio.configureInput(uid: savedAudio.inputDeviceUID, channel: savedAudio.selectedChannel)
         }
         .onChange(
             of:
@@ -205,6 +177,11 @@ struct ContentView: View {
         some View {
 
         switch selection {
+        case .home:
+            HomeView { tool in
+                selection = tool
+            }
+
         case .metronome:
             MetronomeView(
                 preferencesStore:
@@ -214,15 +191,22 @@ struct ContentView: View {
         case .tuner:
             TunerView(
                 audio: audio,
+                output: output,
                 preferencesStore:
                     preferences
             )
 
         case .chords:
-            ChordsView()
+            ChordsView(learning: chordLearning)
 
         case .charts:
-            ChordWikiViewerView()
+            ChordWikiViewerView(model: chartModel, onPractice: { request in
+                practiceRequest = request
+                selection = .chordFollow
+            }, onLearnChords: { symbols, title in
+                chordLearning.startCustom(symbols: symbols, title: title)
+                selection = .chords
+            })
 
         case .fretboard:
             FretboardView()
@@ -233,17 +217,19 @@ struct ContentView: View {
         case .chordFollow:
             ChordFollowPracticeView(
                 audio: audio,
-                preferencesStore:
-                    preferences
+                model: practiceModel,
+                practiceRequest: practiceRequest,
+                onPracticeRequestConsumed: { id in
+                    if practiceRequest?.id == id {
+                        practiceRequest = nil
+                    }
+                }
             )
 
         case .chordDetection:
             ChordDetectionView(
                 audio: audio
             )
-
-        case .roadmap:
-            MacRoadmapView()
 
         case .none:
             ContentUnavailableView(
@@ -282,40 +268,28 @@ struct ContentView: View {
                 ) {
                     Text(
                         audio.isRunning
-                        ? "Audio Input"
-                        : "Audio Input Off"
+                        ? "オーディオ入力中"
+                        : "オーディオ入力"
                     )
                     .font(
                         .callout
                             .weight(.medium)
                     )
 
-                    Text(
-                        audio.isRunning
-                        ? audio.inputLabel
-                        : audio.inputLabel
-                    )
+                    Text(audio.inputLabel)
                     .font(.caption)
                     .foregroundStyle(
                         .secondary
                     )
                     .lineLimit(1)
+                    .truncationMode(.middle)
                 }
 
-                Spacer()
+                Spacer(minLength: 4)
 
-                if audio.isRunning {
-                    Circle()
-                        .fill(
-                            audio.clipping
-                            ? Color.red
-                            : Color.green
-                        )
-                        .frame(
-                            width: 7,
-                            height: 7
-                        )
-                }
+                Image(systemName: audio.isRunning ? "pause.fill" : "play.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(audio.clipping ? .red : .secondary)
             }
             .contentShape(
                 Rectangle()
@@ -328,8 +302,9 @@ struct ContentView: View {
         )
         .padding(
             .vertical,
-            10
+            12
         )
+        .macGlassSurface(radius: 16)
         .help(
             audio.isRunning
             ? "オーディオ入力を停止"
@@ -348,11 +323,12 @@ struct ContentView: View {
                 systemImage:
                     tool.systemImage
             )
+            .padding(.vertical, 5)
         }
     }
 }
 
-private struct MacRoadmapView:
+struct MacAboutView:
     View {
 
     var body: some View {
@@ -364,30 +340,30 @@ private struct MacRoadmapView:
                 MacPageHeader(
                     "Guitar Tools for Mac",
                     subtitle:
-                        "Android版の機能をSwiftUIへ移植し、Macではオーディオインターフェース入力を使った演奏解析を追加しています。"
+                        "ギターのチューニング、譜面の表示、演奏の判定"
                 )
 
                 MacSection(
-                    "Android parity"
+                    "機能"
                 ) {
                     VStack(
                         alignment: .leading,
                         spacing: 10
                     ) {
                         Label(
-                            "Metronome / Tuner / Chords / ChordWiki / Fretboard / Practice",
+                            "メトロノーム、チューナー、コード、譜面、指板、コード進行",
                             systemImage:
                                 "checkmark.circle.fill"
                         )
 
                         Label(
-                            "ChordWiki高精度同期・YouTube・自動スクロール",
+                            "YouTube 再生と譜面の同期、自動スクロール",
                             systemImage:
                                 "checkmark.circle.fill"
                         )
 
                         Label(
-                            "Audio Interfaceコード判定・演奏タイミング評価",
+                            "入力音からコードと演奏タイミングを判定",
                             systemImage:
                                 "checkmark.circle.fill"
                         )
@@ -398,26 +374,26 @@ private struct MacRoadmapView:
                 }
 
                 MacSection(
-                    "方針"
+                    "対応範囲"
                 ) {
                     VStack(
                         alignment: .leading,
                         spacing: 10
                     ) {
                         Label(
-                            "SwiftUIネイティブ",
+                            "SwiftUI による macOS アプリ",
                             systemImage:
                                 "swift"
                         )
 
                         Label(
-                            "オーディオIF入力を練習解析へ利用",
+                            "オーディオインターフェースの入力に対応",
                             systemImage:
                                 "cable.connector"
                         )
 
                         Label(
-                            "録音・ミキサー・エフェクト等のDAW機能は持たない",
+                            "録音、ミキサー、エフェクトは非対応",
                             systemImage:
                                 "xmark.circle"
                         )
@@ -427,7 +403,7 @@ private struct MacRoadmapView:
                     )
                 }
             }
-            .padding(26)
+            .padding(MacLayout.pagePadding)
             .macPageWidth(900)
         }
         .navigationTitle(

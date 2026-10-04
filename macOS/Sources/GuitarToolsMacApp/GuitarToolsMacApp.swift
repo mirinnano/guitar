@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct GuitarToolsMacApp: App {
+    @Environment(\.openWindow) private var openWindow
 
     init() {
         if CommandLine
@@ -26,10 +27,17 @@ struct GuitarToolsMacApp: App {
                 )
         }
         .defaultSize(
-            width: 1_220,
-            height: 820
+            width: 1_280,
+            height: 860
         )
+        .windowToolbarStyle(.unified)
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("Guitar Tools について") {
+                    openWindow(id: "about")
+                }
+            }
+
             CommandGroup(
                 replacing: .newItem
             ) {
@@ -119,5 +127,11 @@ struct GuitarToolsMacApp: App {
                 )
             }
         }
+
+        Window("Guitar Tools について", id: "about") {
+            MacAboutView()
+                .frame(width: 700, height: 520)
+        }
+        .windowResizability(.contentSize)
     }
 }

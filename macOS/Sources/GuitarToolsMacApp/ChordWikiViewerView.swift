@@ -4,9 +4,18 @@ import SwiftUI
 struct ChordWikiViewerView:
     View {
 
-    @StateObject
-    private var model =
-        ChordWikiViewerModel()
+    let onPractice: ((ChartPracticeRequest) -> Void)?
+    let onLearnChords: (([String], String) -> Void)?
+
+    init(model: ChordWikiViewerModel, onPractice: ((ChartPracticeRequest) -> Void)? = nil,
+         onLearnChords: (([String], String) -> Void)? = nil) {
+        self.model = model
+        self.onPractice = onPractice
+        self.onLearnChords = onLearnChords
+    }
+
+    @ObservedObject
+    private var model: ChordWikiViewerModel
 
     @StateObject
     private var youtubeController =
@@ -14,7 +23,20 @@ struct ChordWikiViewerView:
 
     @State
     private var inspectorPresented =
-        true
+        false
+
+    @State
+    private var chordSummaryExpanded = false
+
+    @State
+    private var musicURL = ""
+
+    @State private var musicPanelPresented = false
+    @State private var coachPresented = false
+
+    private var playbackActive: Bool {
+        model.countInRemaining != nil || (model.youtubeVideoID != nil ? model.youtubePlaying : model.isPlaying)
+    }
 
     var body: some View {
         Group {
@@ -33,7 +55,7 @@ struct ChordWikiViewerView:
             text: $model.query,
             placement: .toolbar,
             prompt:
-                "ChordWikiで検索"
+                "曲名またはアーティスト名"
         )
         .onSubmit(
             of: .search
@@ -61,26 +83,13 @@ struct ChordWikiViewerView:
                     placement:
                         .primaryAction
                 ) {
-                    Button {
-                        if model
-                            .youtubeSyncEnabled {
-                            model
-                                .youtubePlaying
-                            ? youtubeController
-                                .pause()
-                            : youtubeController
-                                .play()
-                        } else {
-                            model
-                                .toggleInternalPlayback()
-                        }
-                    } label: {
+                    Button(action: togglePlayback) {
                         Label(
-                            model.isPlaying
+                            playbackActive
                             ? "一時停止"
                             : "再生",
                             systemImage:
-                                model.isPlaying
+                                playbackActive
                                 ? "pause.fill"
                                 : "play.fill"
                         )
@@ -143,6 +152,16 @@ struct ChordWikiViewerView:
                     )
             }
         }
+        .sheet(isPresented: $coachPresented) {
+            if let chart = model.chart {
+                SongCoachView(chart: chart, sourceBPM: model.bpm, initialBeat: model.currentBeat) { start, end in
+                    model.prepareTransitionLoop(startBeat: start, endBeat: end)
+                    if model.youtubeSyncEnabled {
+                        youtubeController.seek(toMilliseconds: model.videoPosition(forBeat: model.currentBeat))
+                    }
+                }
+            }
+        }
         .overlay {
             if model.isLoading {
                 ProgressView()
@@ -156,7 +175,14 @@ struct ChordWikiViewerView:
                     )
             }
         }
+        .onChange(of: model.loopRestartRevision) { _ in
+            guard model.loopEnabled, model.youtubeSyncEnabled,
+                  let range = model.practiceLoop else { return }
+            youtubeController.seek(toMilliseconds: model.videoPosition(forBeat: range.startBeat))
+            youtubeController.play()
+        }
         .onDisappear {
+            youtubeController.pause()
             model.stop()
         }
     }
@@ -172,28 +198,18 @@ struct ChordWikiViewerView:
                 maxWidth: .infinity,
                 maxHeight: .infinity
             )
-        } else if let error =
-            model.errorMessage,
-            model.results.isEmpty {
-            ContentUnavailableView(
-                "検索できませんでした",
-                systemImage:
-                    "exclamationmark.triangle",
-                description:
-                    Text(error)
-            )
-        } else if
-            model.results.isEmpty {
-            ContentUnavailableView(
-                "ChordWiki譜面",
-                systemImage:
-                    "music.note.list",
-                description:
-                    Text(
-                        "ツールバーから曲名・アーティストを検索してください。"
-                    )
+        } else if model.results.isEmpty {
+            ChartSearchStateView(
+                query: $model.query,
+                submittedQuery: model.lastSearchQuery,
+                error: model.errorMessage,
+                onSearch: model.search
             )
         } else {
+            VStack(spacing: 0) {
+            if let error = model.errorMessage {
+                ChartLoadErrorBanner(message: error)
+            }
             List(
                 model.results
             ) {
@@ -229,15 +245,16 @@ struct ChordWikiViewerView:
                 }
                 .buttonStyle(.plain)
             }
+            }
         }
     }
 
     private func chartView(
         _ chart: ChordChart
     ) -> some View {
-        VStack(
-            spacing: 0
-        ) {
+        GeometryReader { geometry in
+            let compact = geometry.size.width < 900
+            VStack(spacing: 0) {
             header(chart)
 
             Divider()
@@ -254,8 +271,7 @@ struct ChordWikiViewerView:
                         alignment: .leading,
                         spacing: 7
                     ) {
-                        if !usedShapes
-                            .isEmpty {
+                        if !usedChordSymbols.isEmpty {
                             usedChordShapes
                                 .padding(
                                     .bottom,
@@ -293,6 +309,7 @@ struct ChordWikiViewerView:
                                             index
                                         }
                                     ?? [],
+                                previousSymbols: ChartVoicingContext.previousSymbols(timeline: model.timeline, lineIndex: index),
                                 onAnchor:
                                     model
                                         .addAnchor
@@ -307,6 +324,12 @@ struct ChordWikiViewerView:
                         alignment:
                             .leading
                     )
+                }
+                .task {
+                    guard model.autoScroll, let line = model.currentEvent?.lineIndex else { return }
+                    try? await Task.sleep(for: .milliseconds(100))
+                    guard !Task.isCancelled else { return }
+                    proxy.scrollTo(line, anchor: .center)
                 }
                 .onChange(
                     of:
@@ -337,50 +360,64 @@ struct ChordWikiViewerView:
                     }
                 }
             }
-
-            Divider()
+            .safeAreaInset(edge: .trailing, spacing: 0) {
+                if musicPanelPresented {
+                    HStack(spacing: 0) {
+                        Divider()
+                        ScrollView {
+                            musicPanel(chart).padding(compact ? 12 : 16)
+                        }
+                        .frame(width: compact ? 260 : 320)
+                    }
+                }
+            }
+            .frame(minHeight: 0, maxHeight: .infinity)
+            .clipped()
 
             transport
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .onAppear { musicPanelPresented = !compact && model.youtubeVideoID != nil }
+            .onChange(of: compact) { small in
+                if small && !playbackActive { setMusicPanelPresented(false) }
+            }
         }
     }
 
     private func header(
         _ chart: ChordChart
     ) -> some View {
-        HStack(
-            alignment: .firstTextBaseline
-        ) {
+        VStack(alignment: .leading, spacing: 6) {
             VStack(
                 alignment: .leading,
                 spacing: 3
             ) {
                 Text(chart.title)
-                    .font(
-                        .title2
-                            .weight(
-                                .semibold
-                            )
-                    )
+                    .font(.system(size: 24, weight: .bold))
+                    .lineLimit(2)
+                    .accessibilityAddTraits(.isHeader)
 
                 if !chart.artist
                     .isEmpty {
                     Text(
                         chart.artist
                     )
-                    .foregroundStyle(
-                        .secondary
-                    )
+                    .font(.caption)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
                 }
             }
-
-            Spacer()
 
             HStack(
                 spacing: 12
             ) {
                 if let key =
                     chart.key {
-                    Text("Key \(key)")
+                    Text("キー \(key)")
                 }
 
                 Text(
@@ -404,10 +441,12 @@ struct ChordWikiViewerView:
                     )
                 }
             }
-            .font(.callout)
+            .font(.caption)
             .foregroundStyle(
                 .secondary
             )
+
+            ChartFingeringContext(chart: chart)
         }
         .padding(
             .horizontal,
@@ -424,6 +463,9 @@ struct ChordWikiViewerView:
         HStack(
             spacing: 16
         ) {
+            if let remaining = model.countInRemaining {
+                MacStatusPill(text: "あと\(remaining)拍で開始", systemImage: "metronome", role: .neutral)
+            }
             LabeledContent(
                 "現在"
             ) {
@@ -497,9 +539,37 @@ struct ChordWikiViewerView:
 
     private var transport:
         some View {
-        VStack(
-            spacing: 4
-        ) {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Button(action: togglePlayback) {
+                    Label(playbackActive ? "一時停止" : "再生", systemImage: playbackActive ? "pause.fill" : "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                Button(musicPanelPresented ? "音楽を閉じて停止" : "音楽", systemImage: "music.note") {
+                    setMusicPanelPresented(!musicPanelPresented)
+                }
+                .help("音楽パネルを閉じると動画再生も停止します。")
+                Button("30秒の切替練習", systemImage: "arrow.left.arrow.right") {
+                    youtubeController.pause()
+                    model.stop()
+                    coachPresented = true
+                }
+                .help("この曲のコード切替を取り出し、残せる指を確認して短く反復します。マイク不要。")
+                if let chart = model.chart, let onPractice {
+                    Button("演奏判定", systemImage: "guitars") {
+                        let request = ChartPracticeRequest(chart: chart, beat: model.currentBeat, bpm: model.bpm)
+                        youtubeController.pause()
+                        model.stop()
+                        onPractice(request)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { practiceControls }
+                VStack(alignment: .leading, spacing: 6) { practiceControls }
+            }
             Slider(
                 value:
                     Binding(
@@ -610,7 +680,162 @@ struct ChordWikiViewerView:
             .vertical,
             8
         )
-        .background(.bar)
+        .macGlassSurface()
+    }
+
+    private var practiceControls: some View {
+        Group {
+            Toggle("カウントイン", isOn: $model.countInEnabled)
+                .help("再生前に1小節の拍を数えます。")
+            Picker("速度", selection: Binding(
+                get: { model.youtubeVideoID != nil ? model.youtubePlaybackRate : model.internalPlaybackRate },
+                set: { rate in
+                    if model.youtubeVideoID != nil { youtubeController.setPlaybackRate(rate) }
+                    else { model.setInternalPlaybackRate(rate) }
+                }
+            )) {
+                ForEach(model.youtubeVideoID != nil ? youtubeController.availablePlaybackRates : [0.5, 0.75, 1.0], id: \.self) { rate in
+                    Text(String(format: "%g×", rate)).tag(rate)
+                }
+            }
+            .frame(width: 115)
+            Toggle("区間リピート", isOn: Binding(get: { model.loopEnabled }, set: model.setLoopEnabled))
+            Menu("区間設定") {
+                Button("ここから4小節") {
+                    model.useFourBarLoop()
+                    if let range = model.practiceLoop { seekPlayback(to: range.startBeat) }
+                }
+                Button("現在位置をA（開始）に設定", action: model.setLoopStart)
+                Button("現在位置をB（終了）に設定", action: model.setLoopEnd)
+                    .disabled(model.currentBeat <= (model.practiceLoop?.startBeat ?? 0))
+            }
+            if model.loopEnabled, let range = model.practiceLoop {
+                let bar = Double(model.timeline?.beatsPerBar ?? 4)
+                Text("\(Int(floor(range.startBeat / bar)) + 1)〜\(Int(ceil(range.endBeat / bar)))小節")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .help(String(format: "A %.1f拍 → B %.1f拍", range.startBeat, range.endBeat))
+            }
+        }
+        .font(.caption)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func setMusicPanelPresented(_ presented: Bool) {
+        if !presented {
+            youtubeController.pause()
+            model.stop()
+        }
+        musicPanelPresented = presented
+    }
+
+    private func seekPlayback(to beat: Double) {
+        model.seek(beat: beat)
+        if model.youtubeSyncEnabled {
+            youtubeController.seek(toMilliseconds: model.videoPosition(forBeat: beat))
+        }
+    }
+
+    private func togglePlayback() {
+        if playbackActive {
+            youtubeController.pause()
+            model.stop()
+            return
+        }
+        if model.youtubeVideoID != nil {
+            musicPanelPresented = true
+        }
+        model.beginPlayback {
+            if model.youtubeVideoID != nil {
+                if model.youtubeSyncEnabled {
+                    youtubeController.seek(toMilliseconds: model.videoPosition(forBeat: model.currentBeat))
+                }
+                youtubeController.play()
+            } else {
+                model.startInternal()
+            }
+        }
+    }
+
+    private func musicPanel(_ chart: ChordChart) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("音楽と一緒に練習", systemImage: "music.note")
+                .font(.headline)
+
+            if let videoID = model.youtubeVideoID {
+                YouTubePlayerView(
+                    videoID: videoID,
+                    controller: youtubeController,
+                    initialPositionMs: model.youtubePositionMs,
+                    initialPlaybackRate: model.youtubePlaybackRate,
+                    onProgress: { position, duration, playing, rate in
+                        guard model.youtubeVideoID == videoID else { return }
+                        model.onYouTubeProgress(
+                            positionMs: position,
+                            durationMs: duration,
+                            playing: playing,
+                            rate: rate
+                        )
+                    },
+                    onUnavailable: {
+                        guard model.youtubeVideoID == videoID else { return }
+                        model.musicUnavailable()
+                    }
+                )
+                .id(videoID)
+                .frame(height: 200)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                Text(chart.youtubeVideoID == videoID ? "ChordWikiの動画リンク" : "指定したYouTube動画")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("音楽に合わせて譜面を進める", isOn: Binding(
+                    get: { model.youtubeSyncEnabled },
+                    set: model.setYouTubeSync
+                ))
+
+                Text("譜面の進む位置はテンポからの推定です。曲の前奏や間奏でずれることがあります。合わないときは右上の設定で位置を調整してください。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Link("YouTubeで開く", destination: URL(string: "https://www.youtube.com/watch?v=\(videoID)")!)
+            } else {
+                Text("この譜面にはYouTubeの動画リンクが見つかりませんでした。")
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            Text("YouTube URLで音楽を指定")
+                .font(.subheadline.weight(.medium))
+            TextField("https://www.youtube.com/watch?v=…", text: $musicURL)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(loadMusicURL)
+                .accessibilityLabel("再生するYouTube URL")
+            Button("読み込む", action: loadMusicURL)
+                .disabled(musicURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            if let message = model.musicMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .onDisappear {
+            youtubeController.pause()
+            model.stop()
+        }
+    }
+
+    private func loadMusicURL() {
+        if YouTubeLink.videoID(in: musicURL) != nil {
+            youtubeController.pause()
+            youtubeController.seek(toMilliseconds: 0)
+        }
+        model.attachMusicURL(musicURL)
     }
 
     @ViewBuilder
@@ -618,48 +843,10 @@ struct ChordWikiViewerView:
         _ chart: ChordChart
     ) -> some View {
         Form {
-            if let video =
-                chart.youtubeVideoID {
+            if model.youtubeVideoID != nil {
                 Section(
                     "YouTube"
                 ) {
-                    YouTubePlayerView(
-                        videoID: video,
-                        controller:
-                            youtubeController,
-                        onProgress: {
-                            position,
-                            duration,
-                            playing,
-                            rate in
-
-                            model
-                                .onYouTubeProgress(
-                                    positionMs:
-                                        position,
-                                    durationMs:
-                                        duration,
-                                    playing:
-                                        playing,
-                                    rate: rate
-                                )
-                        },
-                        onUnavailable: {
-                            model
-                                .setYouTubeSync(
-                                    false
-                                )
-                        }
-                    )
-                    .frame(
-                        minHeight: 200
-                    )
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: 8
-                        )
-                    )
-
                     Toggle(
                         "動画と譜面を同期",
                         isOn:
@@ -726,7 +913,7 @@ struct ChordWikiViewerView:
                 }
 
                 Section(
-                    "高精度同期"
+                    "同期アンカー"
                 ) {
                     Toggle(
                         "アンカー調整",
@@ -848,7 +1035,7 @@ struct ChordWikiViewerView:
             }
 
             Section(
-                "Playback"
+                "再生"
             ) {
                 LabeledContent(
                     "BPM"
@@ -889,86 +1076,58 @@ struct ChordWikiViewerView:
         .formStyle(.grouped)
     }
 
-    private var usedShapes:
-        [GuitarChordShape] {
-        guard let chart =
-            model.chart
-        else {
-            return []
+    private var usedChordSymbols: [String] {
+        guard let chart = model.chart else { return [] }
+        var seen = Set<String>()
+        return chart.lines.flatMap(\.segments).compactMap(\.chord).compactMap { symbol in
+            let value = ChordFingeringPresentation(symbol: symbol)
+            guard value.availability != .noChord, seen.insert(value.symbol).inserted else { return nil }
+            return value.symbol
         }
-
-        let names =
-            chart.lines
-                .flatMap(\.segments)
-                .compactMap(\.chord)
-
-        var seen =
-            Set<String>()
-
-        return names
-            .compactMap {
-                symbol in
-
-                guard
-                    let normalized =
-                        normalizeChordLookup(
-                            symbol
-                        ),
-                    !seen.contains(
-                        normalized
-                    )
-                else {
-                    return nil
-                }
-
-                seen.insert(
-                    normalized
-                )
-
-                return CommonGuitarChords
-                    .shape(
-                        named:
-                            normalized
-                    )
-            }
     }
 
     private var usedChordShapes:
         some View {
-        VStack(
-            alignment: .leading,
-            spacing: 8
-        ) {
-            Text(
-                "使用コード / 押さえ方"
-            )
-            .font(.headline)
-
-            ScrollView(
-                .horizontal
-            ) {
-                HStack(
-                    alignment: .top,
-                    spacing: 10
-                ) {
-                    ForEach(
-                        usedShapes
-                    ) {
-                        shape in
-
-                        GroupBox {
-                            ChordShapeDiagram(
-                                shape: shape,
-                                compact: true
-                            )
-                            .frame(
-                                width: 128
-                            )
-                            .padding(4)
+        VStack(alignment: .leading, spacing: 10) {
+            DisclosureGroup(isExpanded: $chordSummaryExpanded) {
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: 10) {
+                        ForEach(usedChordSymbols, id: \.self) { symbol in
+                            GroupBox {
+                                ChordFingeringView(symbol: symbol, compact: true)
+                                .frame(width: 128)
+                                .padding(4)
+                            }
                         }
                     }
+                    .padding(.top, 8)
                 }
+            } label: {
+                Text("使用コード・押さえ方一覧（\(usedChordSymbols.count)種類）")
+                    .font(.headline)
             }
+
+            if let onLearnChords, !learnableChordSymbols.isEmpty {
+                Button("この曲のコードを覚える", systemImage: "brain") {
+                    model.stop()
+                    youtubeController.pause()
+                    onLearnChords(learnableChordSymbols, "\(model.chart?.title ?? "この曲")のコード")
+                }
+                .buttonStyle(.bordered)
+                .help("音楽を止めて、この曲のコードを図なしで思い出す練習へ")
+            }
+            ChordFingerLegend()
+        }
+    }
+
+    private var learnableChordSymbols: [String] {
+        guard let timeline = model.timeline else { return [] }
+        var seen = Set<String>()
+        return timeline.events.compactMap { event in
+            guard event.isPlayable,
+                  ChordFingeringPresentation(symbol: event.symbol).availability == .supported,
+                  let key = GuitarChordData.selectionKey(for: event.symbol), seen.insert(key).inserted else { return nil }
+            return event.symbol
         }
     }
 
@@ -1038,6 +1197,7 @@ private struct ViewerChartLine:
         Bool
     let events:
         [TimedChordEvent]
+    let previousSymbols: [Int: String]
     let onAnchor:
         (TimedChordEvent) -> Void
 
@@ -1063,10 +1223,14 @@ private struct ViewerChartLine:
             )
 
         case .content:
-            HStack(
-                alignment: .top,
-                spacing: 0
+            ScrollView(
+                .horizontal,
+                showsIndicators: false
             ) {
+                HStack(
+                    alignment: .top,
+                    spacing: 0
+                ) {
                 ForEach(
                     Array(
                         line.segments
@@ -1095,6 +1259,18 @@ private struct ViewerChartLine:
                         alignment: .leading,
                         spacing: 2
                     ) {
+                        if let chord = segment.chord {
+                            InlineChordFingering(
+                                chord: chord, previousSymbol: previousSymbols[segmentIndex]
+                            )
+                        } else {
+                            Color.clear
+                                .frame(
+                                    width: 1,
+                                    height: InlineChordFingering.height
+                                )
+                        }
+
                         if let chord =
                             segment.chord {
                             Button {
@@ -1167,11 +1343,12 @@ private struct ViewerChartLine:
                         )
                     }
                 }
+                .padding(
+                    .vertical,
+                    2
+                )
             }
-            .padding(
-                .vertical,
-                2
-            )
+        }
         }
     }
 

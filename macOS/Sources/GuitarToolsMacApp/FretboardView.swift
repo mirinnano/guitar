@@ -6,9 +6,9 @@ private enum FretboardMode:
     CaseIterable,
     Identifiable {
 
-    case note = "Note"
-    case scale = "Scale"
-    case chord = "Chord"
+    case note = "音名"
+    case scale = "スケール"
+    case chord = "コード"
 
     var id: String {
         rawValue
@@ -58,15 +58,11 @@ struct FretboardView:
                 alignment: .leading,
                 spacing: 16
             ) {
-                MacPageHeader(
-                    "指板",
-                    subtitle:
-                        "音、スケール、コードを0〜24フレットで可視化"
-                ) {
+                MacPageHeader("指板") {
                     MacStatusPill(
                         text:
                             leftHanded
-                            ? "Left-handed"
+                            ? "左利き"
                             : tuning.name,
                         systemImage:
                             leftHanded
@@ -78,7 +74,7 @@ struct FretboardView:
 
                 controls
             }
-            .padding(22)
+            .padding(MacLayout.pagePadding)
 
             Divider()
 
@@ -89,7 +85,7 @@ struct FretboardView:
                 ]
             ) {
                 fretboardCanvas
-                    .padding(24)
+                    .padding(MacLayout.pagePadding)
             }
             .background(
                 Color.secondary
@@ -129,7 +125,7 @@ struct FretboardView:
         some View {
 
         Picker(
-            "Tuning",
+            "チューニング",
             selection:
                 $tuning
         ) {
@@ -145,7 +141,7 @@ struct FretboardView:
         )
 
         Picker(
-            "Mode",
+            "表示内容",
             selection:
                 $mode
         ) {
@@ -163,7 +159,7 @@ struct FretboardView:
         )
 
         Picker(
-            "Root",
+            "ルート",
             selection:
                 $root
         ) {
@@ -183,7 +179,7 @@ struct FretboardView:
 
         if mode == .scale {
             Picker(
-                "Scale",
+                "スケール",
                 selection:
                     $scale
             ) {
@@ -202,7 +198,7 @@ struct FretboardView:
 
         if mode == .chord {
             Picker(
-                "Chord",
+                "コード",
                 selection:
                     $quality
             ) {
@@ -222,20 +218,20 @@ struct FretboardView:
         }
 
         Stepper(
-            "\(maxFret) frets",
+            "\(maxFret) フレット",
             value:
                 $maxFret,
             in: 12...24
         )
 
         Toggle(
-            "Intervals",
+            "度数を表示",
             isOn:
                 $intervalLabels
         )
 
         Toggle(
-            "Left",
+            "左利き",
             isOn:
                 $leftHanded
         )
@@ -356,7 +352,7 @@ struct FretboardView:
 
                 Text(
                     fret == 0
-                    ? "Open"
+                    ? "開放"
                     : "\(fret)"
                 )
                 .font(.caption)

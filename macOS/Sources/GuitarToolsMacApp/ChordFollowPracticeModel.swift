@@ -10,6 +10,9 @@ final class ChordFollowPracticeModel:
     var query = ""
 
     @Published private(set)
+    var lastSearchQuery: String?
+
+    @Published private(set)
     var searchResults:
         [ChordWikiSearchResult] = []
 
@@ -75,6 +78,8 @@ final class ChordFollowPracticeModel:
     private let audio:
         AudioInputModel
 
+    private let requestAudioStart: () -> Void
+
     private let preferencesStore:
         AppPreferencesStore
 
@@ -84,8 +89,16 @@ final class ChordFollowPracticeModel:
     private let sessionStore:
         PracticeSessionStore
 
-    private let client =
-        ChordWikiMacClient()
+    private let client:
+        any ChordWikiClientProtocol
+
+    private var searchRequestID:
+        UInt64 = 0
+
+    private var chartRequestID:
+        UInt64 = 0
+
+    private var lastPracticeRequestID: UUID?
 
     private var timer: Timer?
     private var playbackStartHostSeconds =
@@ -109,14 +122,20 @@ final class ChordFollowPracticeModel:
             SystemAudioHostClock(),
         sessionStore:
             PracticeSessionStore =
-            PracticeSessionStore()
+            PracticeSessionStore(),
+        client:
+            any ChordWikiClientProtocol =
+            ChordWikiMacClient(),
+        requestAudioStart: (() -> Void)? = nil
     ) {
         self.audio = audio
+        self.requestAudioStart = requestAudioStart ?? { audio.requestPermissionAndStart() }
         self.preferencesStore =
             preferencesStore
         self.clock = clock
         self.sessionStore =
             sessionStore
+        self.client = client
 
         let saved =
             preferencesStore.value
@@ -214,6 +233,12 @@ final class ChordFollowPracticeModel:
             return
         }
 
+        searchRequestID &+= 1
+        let requestID = searchRequestID
+
+        closeChart()
+        lastSearchQuery = trimmed
+        searchResults = []
         isSearching = true
         errorMessage = nil
 
@@ -224,14 +249,23 @@ final class ChordFollowPracticeModel:
                         query: trimmed
                     )
 
-                self.searchResults =
-                    values
-                self.isSearching =
-                    false
+                guard requestID ==
+                    self.searchRequestID
+                else {
+                    return
+                }
+
+                self.searchResults = values
+                self.isSearching = false
             } catch {
+                guard requestID ==
+                    self.searchRequestID
+                else {
+                    return
+                }
+
                 self.searchResults = []
-                self.isSearching =
-                    false
+                self.isSearching = false
                 self.errorMessage =
                     error.localizedDescription
             }
@@ -242,8 +276,11 @@ final class ChordFollowPracticeModel:
         _ result:
             ChordWikiSearchResult
     ) {
-        persistCurrentSession()
+        chartRequestID &+= 1
+        let requestID = chartRequestID
+
         pause()
+        persistCurrentSession()
 
         isLoadingChart = true
         errorMessage = nil
@@ -260,32 +297,79 @@ final class ChordFollowPracticeModel:
                             chart: loaded
                         )
 
-                self.chart = loaded
-                self.timeline = built
-                self.bpm =
-                    loaded.bpm ?? 120
-                self.currentSeconds = 0
-                self.attempts = []
-                self.lastAttempt = nil
-                self.claimedEventIDs = []
-                self.pending = nil
-                self.pendingExpected = nil
-                self.sessionStartedAt =
-                    nil
-                self.isLoadingChart =
-                    false
+                guard requestID ==
+                    self.chartRequestID
+                else {
+                    return
+                }
+
+                self.installChart(
+                    loaded,
+                    timeline: built,
+                    bpm: loaded.bpm ?? 120,
+                    beat: 0
+                )
             } catch {
-                self.isLoadingChart =
-                    false
+                guard requestID ==
+                    self.chartRequestID
+                else {
+                    return
+                }
+
+                self.isLoadingChart = false
                 self.errorMessage =
                     error.localizedDescription
             }
         }
     }
 
+    /// Uses the already-loaded chart; stale asynchronous searches/loads cannot replace it.
+    func loadPractice(_ request: ChartPracticeRequest) {
+        guard lastPracticeRequestID != request.id else { return }
+        lastPracticeRequestID = request.id
+        searchRequestID &+= 1
+        chartRequestID &+= 1
+
+        pause()
+        persistCurrentSession()
+        isSearching = false
+        searchResults = []
+        errorMessage = nil
+        query = ""
+
+        installChart(
+            request.chart,
+            timeline: ChordTimelineBuilder.build(chart: request.chart),
+            bpm: request.bpm,
+            beat: request.beat
+        )
+    }
+
+    private func installChart(
+        _ loaded: ChordChart,
+        timeline built: ChordTimeline,
+        bpm selectedBPM: Int,
+        beat: Double
+    ) {
+        chart = loaded
+        timeline = built
+        bpm = max(selectedBPM, 1)
+        let clampedBeat = beat.isNaN ? 0 : min(max(beat, 0), built.totalBeats)
+        currentSeconds = built.seconds(forBeat: clampedBeat, bpm: bpm)
+        attempts = []
+        lastAttempt = nil
+        claimedEventIDs = []
+        pending = nil
+        pendingExpected = nil
+        sessionStartedAt = nil
+        isLoadingChart = false
+    }
+
     func closeChart() {
+        chartRequestID &+= 1
         persistCurrentSession()
         pause()
+        isLoadingChart = false
         chart = nil
         timeline = nil
         currentSeconds = 0
@@ -324,8 +408,7 @@ final class ChordFollowPracticeModel:
         }
 
         if !audio.isRunning {
-            audio
-                .requestPermissionAndStart()
+            requestAudioStart()
         }
 
         if sessionStartedAt == nil {
@@ -349,6 +432,7 @@ final class ChordFollowPracticeModel:
         isPlaying = false
         timer?.invalidate()
         timer = nil
+        cancelPendingAttempt()
     }
 
     func resetSession() {
@@ -366,14 +450,23 @@ final class ChordFollowPracticeModel:
     func seek(
         to seconds: Double
     ) {
-        currentSeconds =
-            min(
-                max(
-                    seconds,
-                    0
-                ),
-                durationSeconds
-            )
+        if isPlaying { updateClock() }
+        let previousSeconds = currentSeconds
+        let destination = min(max(seconds, 0), durationSeconds)
+
+        // A pending onset belongs to the old transport position. Do not grade
+        // a delayed chord result against it after seeking.
+        cancelPendingAttempt()
+
+        if destination < previousSeconds, let timeline {
+            let destinationBeat = timeline.beat(forSeconds: destination, bpm: bpm)
+            let firstBeat = timeline.event(atBeat: destinationBeat)?.startBeat ?? destinationBeat
+            for event in timeline.events where event.startBeat >= firstBeat {
+                claimedEventIDs.remove(event.id)
+            }
+        }
+        // Keep completed attempts as history; replayed events get fresh attempts.
+        currentSeconds = destination
 
         if isPlaying {
             playbackStartHostSeconds =
@@ -463,6 +556,7 @@ final class ChordFollowPracticeModel:
         let candidate =
             timeline.events
                 .filter {
+                    $0.isPlayable &&
                     !claimedEventIDs
                         .contains(
                             $0.id
@@ -546,7 +640,7 @@ final class ChordFollowPracticeModel:
         _ chord: String,
         timestamp: Double
     ) {
-        guard let pending else {
+        guard isPlaying, let pending else {
             return
         }
 
@@ -564,6 +658,12 @@ final class ChordFollowPracticeModel:
         finalizePending(
             playedChord: chord
         )
+    }
+
+    private func cancelPendingAttempt() {
+        if let pending { claimedEventIDs.remove(pending.event.id) }
+        pending = nil
+        pendingExpected = nil
     }
 
     private func finalizePending(

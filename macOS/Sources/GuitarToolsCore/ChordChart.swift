@@ -9,13 +9,17 @@ public enum ChartLineKind: Sendable, Equatable {
 public struct ChartSegment: Sendable, Equatable {
     public let chord: String?
     public let text: String
+    /// Keeps a timing slot when a source chord cannot safely be played in concert pitch.
+    public let timingChord: String?
 
     public init(
         chord: String? = nil,
-        text: String
+        text: String,
+        timingChord: String? = nil
     ) {
         self.chord = chord
         self.text = text
+        self.timingChord = timingChord ?? chord
     }
 }
 
@@ -43,6 +47,12 @@ public struct ChordChart: Sendable, Equatable {
     public let lines: [ChartLine]
     public let sourceURL: URL?
     public let youtubeVideoID: String?
+    /// The source chart's explicit capo directive. Displayed chords are concert pitch.
+    public let sourceCapo: Int
+    public let sourceKey: String?
+    public let capoDirectiveWarning: String?
+    /// Symbols that could not safely be converted; these are retained as text, not diagrams.
+    public let unconvertedChordSymbols: [String]
 
     public init(
         sourceTitle: String,
@@ -54,7 +64,11 @@ public struct ChordChart: Sendable, Equatable {
         beatUnit: Int = 4,
         lines: [ChartLine],
         sourceURL: URL? = nil,
-        youtubeVideoID: String? = nil
+        youtubeVideoID: String? = nil,
+        sourceCapo: Int = 0,
+        sourceKey: String? = nil,
+        capoDirectiveWarning: String? = nil,
+        unconvertedChordSymbols: [String] = []
     ) {
         self.sourceTitle = sourceTitle
         self.title = title
@@ -65,8 +79,11 @@ public struct ChordChart: Sendable, Equatable {
         self.beatUnit = beatUnit
         self.lines = lines
         self.sourceURL = sourceURL
-        self.youtubeVideoID =
-            youtubeVideoID
+        self.youtubeVideoID = youtubeVideoID
+        self.sourceCapo = sourceCapo
+        self.sourceKey = sourceKey
+        self.capoDirectiveWarning = capoDirectiveWarning
+        self.unconvertedChordSymbols = unconvertedChordSymbols
     }
 }
 
@@ -81,6 +98,7 @@ public struct TimedChordEvent:
     public let segmentIndex: Int
     public let startBeat: Double
     public let durationBeats: Double
+    public let isPlayable: Bool
 
     public init(
         id: Int,
@@ -88,7 +106,8 @@ public struct TimedChordEvent:
         lineIndex: Int,
         segmentIndex: Int,
         startBeat: Double,
-        durationBeats: Double
+        durationBeats: Double,
+        isPlayable: Bool = true
     ) {
         self.id = id
         self.symbol = symbol
@@ -96,6 +115,7 @@ public struct TimedChordEvent:
         self.segmentIndex = segmentIndex
         self.startBeat = startBeat
         self.durationBeats = durationBeats
+        self.isPlayable = isPlayable
     }
 }
 
@@ -215,6 +235,11 @@ public enum ChordChartParser {
                 #"^\{([^}:]+)(?::(.*))?\}$"#
         )
 
+    private static let commentTempo = try! NSRegularExpression(
+        pattern: #"\bBPM\s*[=:：]\s*(\d+)"#,
+        options: [.caseInsensitive]
+    )
+
     private static let bracket =
         try! NSRegularExpression(
             pattern:
@@ -224,17 +249,20 @@ public enum ChordChartParser {
     private static let chordToken =
         try! NSRegularExpression(
             pattern:
-                #"^[A-Ga-g](?:#|b|♯|♭)?[A-Za-z0-9#b♯♭()+,\-△Δ°ø]*(?:/[A-Ga-g](?:#|b|♯|♭)?)?$"#
+                #"^[A-Ga-g](?:#|b|♯|♭)?[A-Za-z0-9#b♯♭()+,\-△Δ°ø]*(?:/9)?(?:/[A-Ga-g](?:#|b|♯|♭)?)?$"#
         )
 
     public static func parse(
         _ source: String,
         fallbackTitle: String,
-        sourceURL: URL? = nil
+        sourceURL: URL? = nil,
+        linkedMediaHTML: String? = nil
     ) -> ChordChart {
         var title = fallbackTitle
         var artist = ""
         var key: String?
+        var sourceCapo = 0
+        var capoDirectiveWarning: String?
         var bpm: Int?
         var beatsPerBar = 4
         var beatUnit = 4
@@ -293,6 +321,14 @@ public enum ChordChartParser {
                             ? nil
                             : value
 
+                    case "capo":
+                        if let number = Int(value), (0...12).contains(number) {
+                            sourceCapo = number
+                            capoDirectiveWarning = nil
+                        } else {
+                            capoDirectiveWarning = "カポ指定「\(value)」を解釈できないため、コード図を表示しません。"
+                        }
+
                     case "tempo", "bpm":
                         if let number =
                             Int(value),
@@ -316,6 +352,16 @@ public enum ChordChartParser {
                         "c",
                         "comment_italic",
                         "ci":
+                        let nsValue = value as NSString
+                        if bpm == nil,
+                           let match = commentTempo.firstMatch(
+                               in: value,
+                               range: NSRange(location: 0, length: nsValue.length)
+                           ),
+                           let number = Int(nsValue.substring(with: match.range(at: 1))),
+                           (20...400).contains(number) {
+                            bpm = number
+                        }
                         if !value.isEmpty {
                             lines.append(
                                 ChartLine(
@@ -360,6 +406,25 @@ public enum ChordChartParser {
             lines.removeLast()
         }
 
+        let sourceKey = key
+        var unconverted: [String] = []
+        if sourceCapo > 0 || capoDirectiveWarning != nil {
+            key = capoDirectiveWarning == nil
+                ? key.flatMap { ChordSymbolTransposition.transpose($0, semitones: sourceCapo) } : nil
+            lines = lines.map { line in
+                ChartLine(segments: line.segments.map { segment in
+                    guard let symbol = segment.chord,
+                          !["NC", "N.C.", "<"].contains(symbol.uppercased()) else { return segment }
+                    if capoDirectiveWarning == nil,
+                       let transposed = ChordSymbolTransposition.transpose(symbol, semitones: sourceCapo) {
+                        return ChartSegment(chord: transposed, text: segment.text)
+                    }
+                    if !unconverted.contains(symbol) { unconverted.append(symbol) }
+                    return ChartSegment(text: "[\(symbol)]" + segment.text, timingChord: symbol)
+                }, kind: line.kind)
+            }
+        }
+
         return ChordChart(
             sourceTitle: fallbackTitle,
             title: title,
@@ -371,52 +436,15 @@ public enum ChordChartParser {
             lines: lines,
             sourceURL: sourceURL,
             youtubeVideoID:
-                extractYouTubeVideoID(
-                    source
-                )
+                YouTubeLink.videoID(in: source)
+                ?? linkedMediaHTML.flatMap {
+                    YouTubeLink.videoID(in: $0)
+                },
+            sourceCapo: sourceCapo,
+            sourceKey: sourceKey,
+            capoDirectiveWarning: capoDirectiveWarning,
+            unconvertedChordSymbols: unconverted
         )
-    }
-
-    private static func extractYouTubeVideoID(
-        _ source: String
-    ) -> String? {
-        let patterns = [
-            #"https?://(?:www\.)?youtube\.com/watch\?[^\s}]*?\bv=([A-Za-z0-9_-]{11})"#,
-            #"https?://youtu\.be/([A-Za-z0-9_-]{11})"#,
-            #"https?://(?:www\.)?youtube\.com/embed/([A-Za-z0-9_-]{11})"#,
-            #"\{(?:youtube|yt)\s*:\s*([A-Za-z0-9_-]{11})\s*\}"#
-        ]
-
-        for pattern in patterns {
-            guard let regex =
-                try? NSRegularExpression(
-                    pattern: pattern,
-                    options:
-                        [.caseInsensitive]
-                )
-            else {
-                continue
-            }
-
-            let ns =
-                source as NSString
-
-            if let match =
-                regex.firstMatch(
-                    in: source,
-                    range: NSRange(
-                        location: 0,
-                        length: ns.length
-                    )
-                ) {
-                return ns.substring(
-                    with:
-                        match.range(at: 1)
-                )
-            }
-        }
-
-        return nil
     }
 
     private static func parseContentLine(
@@ -712,7 +740,7 @@ public enum ChordTimelineBuilder {
             let hasChord =
                 line.segments
                     .contains {
-                        $0.chord != nil
+                        $0.timingChord != nil
                     }
 
             guard hasText || hasChord else {
@@ -748,7 +776,8 @@ public enum ChordTimelineBuilder {
                                     Double(index) *
                                     duration,
                                 durationBeats:
-                                    duration
+                                    duration,
+                                isPlayable: chord.isPlayable
                             )
                         )
                         nextID += 1
@@ -774,6 +803,7 @@ public enum ChordTimelineBuilder {
     private struct IndexedChord {
         let segmentIndex: Int
         let symbol: String
+        let isPlayable: Bool
     }
 
     private static func splitIntoBars(
@@ -790,12 +820,13 @@ public enum ChordTimelineBuilder {
             segment
         ) in line.segments.enumerated() {
             if let chord =
-                segment.chord {
+                segment.timingChord {
                 current.append(
                     IndexedChord(
                         segmentIndex:
                             segmentIndex,
-                        symbol: chord
+                        symbol: chord,
+                        isPlayable: segment.chord != nil
                     )
                 )
             }

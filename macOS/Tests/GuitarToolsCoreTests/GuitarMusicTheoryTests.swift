@@ -4,7 +4,7 @@ import XCTest
 final class GuitarMusicTheoryTests:
     XCTestCase {
 
-    func testChordLibraryContainsAllAndroidQualitiesForAllRoots() {
+    func testChordLibraryContainsEveryQualityForAllRoots() {
         XCTAssertEqual(
             CommonGuitarChords
                 .all
@@ -16,10 +16,8 @@ final class GuitarMusicTheoryTests:
                 .count
         )
         XCTAssertEqual(
-            CommonGuitarChords
-                .all
-                .count,
-            192
+            Set(CommonGuitarChords.all.map(\.id)).count,
+            GuitarNote.allCases.count * GuitarChordQuality.allCases.count
         )
     }
 
@@ -47,6 +45,14 @@ final class GuitarMusicTheoryTests:
                 "E(sus)"
             ),
             "Esus4"
+        )
+        XCTAssertEqual(
+            CommonGuitarChords
+                .shape(
+                    named: "B♭maj7/D"
+                )?
+                .name,
+            "A#maj7"
         )
     }
 

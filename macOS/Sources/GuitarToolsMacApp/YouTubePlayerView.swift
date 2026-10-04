@@ -8,13 +8,48 @@ final class YouTubePlayerController:
     weak var webView:
         WKWebView?
 
+    private(set) var isReady = false
+    @Published private(set) var availablePlaybackRates: [Double] = [1]
+    private var playWhenReady = false
+    private var pendingSeekMs: Int64?
+    private var pendingPlaybackRate: Double?
+
+    func reset() {
+        isReady = false
+        playWhenReady = false
+        pendingSeekMs = nil
+        pendingPlaybackRate = nil
+    }
+
+    func playerReady(rates: [Double] = [1]) {
+        isReady = true
+        availablePlaybackRates = rates.isEmpty ? [1] : rates.sorted()
+        if let position = pendingSeekMs {
+            pendingSeekMs = nil
+            seek(toMilliseconds: position)
+        }
+        if let rate = pendingPlaybackRate {
+            pendingPlaybackRate = nil
+            setPlaybackRate(rate)
+        }
+        if playWhenReady {
+            playWhenReady = false
+            play()
+        }
+    }
+
     func play() {
+        guard isReady else {
+            playWhenReady = true
+            return
+        }
         evaluate(
             "window.guitarToolsPlay && window.guitarToolsPlay();"
         )
     }
 
     func pause() {
+        playWhenReady = false
         evaluate(
             "window.guitarToolsPause && window.guitarToolsPause();"
         )
@@ -24,6 +59,10 @@ final class YouTubePlayerController:
         toMilliseconds value:
             Int64
     ) {
+        guard isReady else {
+            pendingSeekMs = max(value, 0)
+            return
+        }
         let seconds =
             Double(
                 max(value, 0)
@@ -33,6 +72,16 @@ final class YouTubePlayerController:
         evaluate(
             "window.guitarToolsSeek && window.guitarToolsSeek(\(seconds));"
         )
+    }
+
+    func setPlaybackRate(_ rate: Double) {
+        guard rate.isFinite, rate > 0 else { return }
+        guard isReady else {
+            pendingPlaybackRate = rate
+            return
+        }
+        guard availablePlaybackRates.contains(rate) else { return }
+        evaluate("window.guitarToolsRate && window.guitarToolsRate(\(rate));")
     }
 
     private func evaluate(
@@ -54,6 +103,9 @@ struct YouTubePlayerView:
     var controller:
         YouTubePlayerController
 
+    var initialPositionMs: Int64 = 0
+    var initialPlaybackRate: Double = 1
+
     let onProgress:
         (
             _ positionMs: Int64,
@@ -69,6 +121,7 @@ struct YouTubePlayerView:
     func makeCoordinator()
         -> Coordinator {
         Coordinator(
+            controller: controller,
             onProgress:
                 onProgress,
             onUnavailable:
@@ -106,16 +159,17 @@ struct YouTubePlayerView:
                     configuration
             )
 
+        controller.reset()
+        if initialPositionMs > 0 {
+            controller.seek(toMilliseconds: initialPositionMs)
+        }
+        controller.setPlaybackRate(initialPlaybackRate)
         controller.webView =
             view
 
         view.loadHTMLString(
             playerHTML(videoID),
-            baseURL:
-                URL(
-                    string:
-                        "https://www.youtube.com/"
-                )
+            baseURL: URL(string: playerOrigin)
         )
 
         return view
@@ -142,11 +196,19 @@ struct YouTubePlayerView:
             )
 
         nsView.stopLoading()
+        // Tear down the iframe too: stopping navigation alone does not stop audio.
+        nsView.loadHTMLString("", baseURL: nil)
+        if coordinator.controller.webView === nsView {
+            coordinator.controller.reset()
+            coordinator.controller.webView = nil
+        }
     }
 
     final class Coordinator:
         NSObject,
         WKScriptMessageHandler {
+
+        let controller: YouTubePlayerController
 
         let onProgress:
             (
@@ -160,6 +222,7 @@ struct YouTubePlayerView:
             () -> Void
 
         init(
+            controller: YouTubePlayerController,
             onProgress:
                 @escaping (
                     Int64,
@@ -170,6 +233,7 @@ struct YouTubePlayerView:
             onUnavailable:
                 @escaping () -> Void
         ) {
+            self.controller = controller
             self.onProgress =
                 onProgress
             self.onUnavailable =
@@ -193,7 +257,13 @@ struct YouTubePlayerView:
                 return
             }
 
+            if type == "ready" {
+                controller.playerReady(rates: object["rates"] as? [Double] ?? [1])
+                return
+            }
+
             if type == "error" {
+                controller.reset()
                 onUnavailable()
                 return
             }
@@ -249,6 +319,11 @@ struct YouTubePlayerView:
         }
     }
 
+    private var playerOrigin: String {
+        let identifier = Bundle.main.bundleIdentifier ?? "dev.mirinnano.guitartools.mac"
+        return "https://\(identifier.lowercased())"
+    }
+
     private func playerHTML(
         _ videoID: String
     ) -> String {
@@ -265,6 +340,7 @@ struct YouTubePlayerView:
         <html>
         <head>
           <meta name="viewport" content="width=device-width,initial-scale=1">
+          <meta name="referrer" content="strict-origin-when-cross-origin">
           <style>
             html,body,#player {
               width:100%;
@@ -281,8 +357,11 @@ struct YouTubePlayerView:
           <script>
             var player = null;
             var ready = false;
+            var pauseAfterSeek = false;
+            var seekTarget = null;
 
             window.guitarToolsPlay = function() {
+              pauseAfterSeek = false;
               if (ready && player) player.playVideo();
             };
 
@@ -291,7 +370,15 @@ struct YouTubePlayerView:
             };
 
             window.guitarToolsSeek = function(seconds) {
-              if (ready && player) player.seekTo(seconds, true);
+              if (ready && player) {
+                pauseAfterSeek = player.getPlayerState() !== YT.PlayerState.PLAYING;
+                seekTarget = seconds;
+                player.seekTo(seconds, true);
+                if (pauseAfterSeek) player.pauseVideo();
+              }
+            };
+            window.guitarToolsRate = function(rate) {
+              if (ready && player) player.setPlaybackRate(rate);
             };
 
             function send(payload) {
@@ -304,6 +391,10 @@ struct YouTubePlayerView:
               if (!ready || !player) return;
               try {
                 var state = player.getPlayerState();
+                if (pauseAfterSeek && state === YT.PlayerState.PAUSED &&
+                    Math.abs(player.getCurrentTime() - seekTarget) < 1) {
+                  pauseAfterSeek = false;
+                }
                 send({
                   type: 'progress',
                   positionMs: Math.round(player.getCurrentTime() * 1000),
@@ -318,18 +409,26 @@ struct YouTubePlayerView:
               player = new YT.Player('player', {
                 videoId: '\(safe)',
                 playerVars: {
+                  autoplay: 0,
                   playsinline: 1,
                   controls: 1,
                   rel: 0,
                   enablejsapi: 1,
-                  origin: 'https://www.youtube.com'
+                  origin: '\(playerOrigin)'
                 },
                 events: {
                   onReady: function() {
                     ready = true;
+                    send({type: 'ready', rates: player.getAvailablePlaybackRates()});
                     report();
                   },
-                  onStateChange: report,
+                  onStateChange: function(event) {
+                    if (pauseAfterSeek && event.data === YT.PlayerState.PLAYING) {
+                      pauseAfterSeek = false;
+                      player.pauseVideo();
+                    }
+                    report();
+                  },
                   onError: function(event) {
                     send({
                       type: 'error',

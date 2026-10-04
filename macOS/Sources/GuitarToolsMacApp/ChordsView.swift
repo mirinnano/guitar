@@ -1,299 +1,247 @@
 import GuitarToolsCore
 import SwiftUI
 
-struct ChordsView:
-    View {
+struct ChordsView: View {
+    @ObservedObject var learning: ChordLearningModel
 
-    @State
-    private var query = ""
+    private enum LibraryMode: String, CaseIterable, Identifiable {
+        case learn = "覚える"
+        case basic = "基本コード"
+        case all = "すべてのコード"
+        var id: String { rawValue }
+    }
 
-    @State
-    private var selectedRoot:
-        GuitarNote?
-
-    @State
-    private var selectedQuality:
-        GuitarChordQuality?
+    @State private var mode: LibraryMode = .learn
+    @State private var query = ""
+    @State private var selectedRoot: GuitarNote?
+    @State private var selectedQuality: GuitarChordQuality?
 
     private let columns = [
-        GridItem(
-            .adaptive(
-                minimum: 160,
-                maximum: 210
-            ),
-            spacing: 12
-        )
+        GridItem(.adaptive(minimum: 160, maximum: 210), spacing: 14)
     ]
 
     var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
+                MacPageHeader("コード", subtitle: "ネックを覗く向きで、定番の形を覚えましょう。") {
+                    MacStatusPill(text: mode == .learn ? "図なしで復習" : "\(resultCount) コード", systemImage: "guitars")
+                }
+                Picker("コードの使い方", selection: $mode) {
+                    Text("覚える").tag(LibraryMode.learn)
+                    Text("基本（9）").tag(LibraryMode.basic)
+                    Text("すべて（\(CommonGuitarChords.all.count)）").tag(LibraryMode.all)
+                }
+                .pickerStyle(.segmented)
+            }
+            .padding(MacLayout.pagePadding)
+            .macPageWidth(1_180)
+            Divider()
+            if mode == .learn {
+                ChordLearningView(model: learning)
+            } else {
+                library
+            }
+        }
+        .navigationTitle("コード")
+        .searchable(text: $query, placement: .toolbar, prompt: "C, Db/F, Cm6/9...")
+        .onChange(of: query) { _, value in
+            if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && mode == .learn { mode = .all }
+        }
+        .onChange(of: learning.phase) { _, phase in
+            if phase != .idle && phase != .completed { mode = .learn; query = "" }
+        }
+    }
+
+    private var library: some View {
         ScrollView {
-            LazyVStack(
-                alignment: .leading,
-                spacing: 22
-            ) {
-                MacPageHeader(
-                    "コード",
-                    subtitle:
-                        "12ルート × 16種類の押さえ方"
-                ) {
-                    MacStatusPill(
-                        text:
-                            "\(resultCount) chords",
-                        systemImage:
-                            "guitars",
-                        role: .neutral
-                    )
+            LazyVStack(alignment: .leading, spacing: MacLayout.sectionSpacing) {
+                readingGuide
+
+                if mode == .all {
+                    filterBar
                 }
 
-                filterBar
-
-                if resultCount == 0 {
+                if let exactQuery {
+                    MacSection("指定したコード（カポなし）") {
+                        ChordFingeringView(symbol: exactQuery.symbol)
+                            .frame(width: 260)
+                        Button("このコードを覚える", systemImage: "brain") {
+                            learn([exactQuery.symbol], title: "\(exactQuery.symbol)を覚える")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                } else if resultCount == 0 {
                     ContentUnavailableView(
                         "コードが見つかりません",
-                        systemImage:
-                            "magnifyingglass",
-                        description:
-                            Text(
-                                "検索語またはフィルターを変更してください。"
-                            )
+                        systemImage: "magnifyingglass",
+                        description: Text("検索語またはフィルターを変更してください。")
                     )
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: 320
-                    )
+                    .frame(maxWidth: .infinity, minHeight: 320)
+                } else if mode == .basic {
+                    basicChordGrid
                 } else {
-                    ForEach(
-                        displayedRoots
-                    ) {
-                        root in
-
-                        let shapes =
-                            filteredShapes(
-                                root: root
-                            )
-
+                    ForEach(displayedRoots) { root in
+                        let shapes = filteredShapes(root: root)
                         if !shapes.isEmpty {
-                            rootSection(
-                                root,
-                                shapes: shapes
-                            )
+                            rootSection(root, shapes: shapes)
                         }
                     }
                 }
             }
-            .padding(26)
+            .padding(MacLayout.pagePadding)
             .macPageWidth(1_180)
         }
-        .navigationTitle(
-            "コード"
-        )
-        .searchable(
-            text: $query,
-            placement: .toolbar,
-            prompt:
-                "C, Am, maj7..."
-        )
     }
 
-    private var filterBar:
-        some View {
+    private func learn(_ symbols: [String], title: String) {
+        learning.startCustom(symbols: symbols, title: title)
+        query = ""
+        mode = .learn
+    }
 
-        MacSection(
-            "フィルター"
-        ) {
-            HStack(
-                spacing: 14
-            ) {
-                Picker(
-                    "Root",
-                    selection:
-                        $selectedRoot
-                ) {
-                    Text("All roots")
-                        .tag(
-                            Optional<GuitarNote>
-                                .none
-                        )
+    private var readingGuide: some View {
+        MacSection("コード図の読み方") {
+            ChordFingerLegend()
+            Text("数字は押さえる指、○は押さえずに鳴らす弦、×は鳴らさない弦です。m はマイナーを表します。指の位置は目安なので、無理のない押さえ方で練習してください。")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            if mode == .basic {
+                Text("まずは Em・Am・C などから。F は1本の指で複数の弦を押さえるバレーコードで、慣れるまで難しい形です。先に開放弦を使うコードを練習して大丈夫です。F を C や Em に替えても同じ響きにはなりません。すべて標準チューニング・カポなしの押さえ方です。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
 
-                    ForEach(
-                        GuitarNote.allCases
-                    ) {
-                        note in
-
-                        Text(
-                            note.displayName
-                        )
-                        .tag(
-                            Optional(note)
-                        )
+    private var basicChordGrid: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+            ForEach(filteredBasicShapes) { shape in
+                VStack(alignment: .leading, spacing: 10) {
+                    ChordFingeringView(symbol: shape.name, compact: true)
+                    Button("定番の形を覚える", systemImage: "brain") {
+                        learn([shape.name], title: "\(shape.name)を覚える")
                     }
+                    .buttonStyle(.bordered)
+                    Text("練習は定番フォーム。別の形は ⋯ から選べます。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
-                .frame(
-                    minWidth: 150
-                )
+                .padding(16)
+                .frame(maxWidth: .infinity)
+                .macContentSurface(radius: 18)
+            }
+        }
+    }
 
-                Picker(
-                    "Quality",
-                    selection:
-                        $selectedQuality
-                ) {
-                    Text("All qualities")
-                        .tag(
-                            Optional<
-                                GuitarChordQuality
-                            >.none
-                        )
+    private var filteredBasicShapes: [GuitarChordShape] {
+        ["Em", "Am", "C", "G", "D", "A", "E", "Dm", "F"]
+            .compactMap { CommonGuitarChords.shape(named: $0) }
+            .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+    }
 
-                    ForEach(
-                        GuitarChordQuality
-                            .allCases
-                    ) {
-                        quality in
-
-                        Text(
-                            quality
-                                .displayName
-                        )
-                        .tag(
-                            Optional(
-                                quality
-                            )
-                        )
-                    }
+    private var filterBar: some View {
+        MacSection("絞り込み") {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 18) {
+                    rootPicker
+                    qualityPicker
+                    Spacer(minLength: 0)
+                    resetButton
                 }
-                .frame(
-                    minWidth: 190
-                )
-
-                Spacer()
-
-                if selectedRoot != nil ||
-                    selectedQuality != nil ||
-                    !query.isEmpty {
-                    Button(
-                        "リセット"
-                    ) {
-                        selectedRoot = nil
-                        selectedQuality =
-                            nil
-                        query = ""
-                    }
+                VStack(alignment: .leading, spacing: 14) {
+                    rootPicker
+                    qualityPicker
+                    resetButton
                 }
             }
         }
     }
 
-    private func rootSection(
-        _ root: GuitarNote,
-        shapes:
-            [GuitarChordShape]
-    ) -> some View {
+    private var rootPicker: some View {
+        Picker("基準の音", selection: $selectedRoot) {
+            Text("すべて").tag(Optional<GuitarNote>.none)
+            ForEach(GuitarNote.allCases) { note in
+                Text(note.displayName).tag(Optional(note))
+            }
+        }
+        .frame(minWidth: 160)
+    }
 
-        VStack(
-            alignment: .leading,
-            spacing: 10
-        ) {
-            HStack {
-                Text(
-                    root.displayName
-                )
-                .font(
-                    .title2
-                        .weight(
-                            .semibold
-                        )
-                )
+    private var qualityPicker: some View {
+        Picker("種類", selection: $selectedQuality) {
+            Text("すべて").tag(Optional<GuitarChordQuality>.none)
+            ForEach(GuitarChordQuality.allCases) { quality in
+                Text(quality.displayName).tag(Optional(quality))
+            }
+        }
+        .frame(minWidth: 200)
+    }
 
-                Text(
-                    "\(shapes.count)"
-                )
-                .font(.caption)
-                .foregroundStyle(
-                    .secondary
-                )
+    @ViewBuilder
+    private var resetButton: some View {
+        if selectedRoot != nil || selectedQuality != nil || !query.isEmpty {
+            Button("リセット", systemImage: "arrow.counterclockwise") {
+                selectedRoot = nil
+                selectedQuality = nil
+                query = ""
+            }
+        }
+    }
 
+    private func rootSection(_ root: GuitarNote, shapes: [GuitarChordShape]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(root.displayName)
+                    .font(.title2.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Text("\(shapes.count) 種類")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Spacer()
             }
+            .padding(.top, 6)
 
-            LazyVGrid(
-                columns: columns,
-                alignment: .leading,
-                spacing: 12
-            ) {
-                ForEach(
-                    shapes
-                ) {
-                    shape in
-
-                    ChordShapeDiagram(
-                        shape: shape,
-                        compact: true
-                    )
-                    .padding(12)
-                    .frame(
-                        maxWidth: .infinity
-                    )
-                    .background(
-                        .quaternary
-                            .opacity(0.16),
-                        in:
-                            RoundedRectangle(
-                                cornerRadius: 12,
-                                style:
-                                    .continuous
-                            )
-                    )
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+                ForEach(shapes) { shape in
+                    VStack(spacing: 10) {
+                        ChordFingeringView(symbol: shape.name, compact: true)
+                        Button("覚える", systemImage: "brain") {
+                            learn([shape.name], title: "\(shape.name)を覚える")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity)
+                    .macContentSurface(radius: 18)
                 }
             }
         }
     }
 
-    private var displayedRoots:
-        [GuitarNote] {
-        if let selectedRoot {
-            [selectedRoot]
+    private var displayedRoots: [GuitarNote] {
+        if let selectedRoot { [selectedRoot] } else { GuitarNote.allCases }
+    }
+
+    private var exactQuery: ChordFingeringPresentation? {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let value = ChordFingeringPresentation(symbol: query)
+        return value.availability == .supported ? value : nil
+    }
+
+    private var resultCount: Int {
+        if exactQuery != nil { return 1 }
+        if mode == .basic {
+            return filteredBasicShapes.count
         } else {
-            GuitarNote.allCases
+            return displayedRoots.reduce(0) { $0 + filteredShapes(root: $1).count }
         }
     }
 
-    private var resultCount:
-        Int {
-        displayedRoots
-            .reduce(0) {
-                result,
-                root in
-
-                result +
-                    filteredShapes(
-                        root: root
-                    ).count
-            }
-    }
-
-    private func filteredShapes(
-        root: GuitarNote
-    ) -> [GuitarChordShape] {
-        CommonGuitarChords
-            .forRoot(root)
-            .filter {
-                shape in
-
-                let queryMatch =
-                    query.isEmpty ||
-                    shape.name
-                        .localizedCaseInsensitiveContains(
-                            query
-                        )
-
-                let qualityMatch =
-                    selectedQuality ==
-                    nil ||
-                    shape.chord.quality ==
-                    selectedQuality
-
-                return queryMatch &&
-                    qualityMatch
-            }
+    private func filteredShapes(root: GuitarNote) -> [GuitarChordShape] {
+        CommonGuitarChords.forRoot(root).filter { shape in
+            let queryMatch = query.isEmpty || shape.name.localizedCaseInsensitiveContains(query)
+            let qualityMatch = selectedQuality == nil || shape.chord.quality == selectedQuality
+            return queryMatch && qualityMatch
+        }
     }
 }

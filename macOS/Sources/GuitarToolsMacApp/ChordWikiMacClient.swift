@@ -35,88 +35,40 @@ enum ChordWikiSearchParser {
         )
 
     static func parse(
-        html: String
+        resultURLs: [String]
     ) -> [ChordWikiSearchResult] {
-        let pattern =
-            #"(?is)<a[^>]+href\s*=\s*["']([^"']+)["'][^>]*>"#
+        var seen = Set<String>()
+        var results: [ChordWikiSearchResult] = []
 
-        guard let regex =
-            try? NSRegularExpression(
-                pattern: pattern
-            )
-        else {
-            return []
-        }
-
-        let ns =
-            html as NSString
-
-        var seen =
-            Set<String>()
-
-        var values:
-            [ChordWikiSearchResult] = []
-
-        for match in regex.matches(
-            in: html,
-            range: NSRange(
-                location: 0,
-                length: ns.length
-            )
-        ) {
-            let rawHref =
-                htmlDecode(
-                    ns.substring(
-                        with:
-                            match.range(
-                                at: 1
-                            )
-                    )
-                )
-                .trimmingCharacters(
-                    in:
-                        .whitespacesAndNewlines
-                )
-
+        for rawURL in resultURLs {
             guard
                 let absoluteURL =
                     URL(
-                        string: rawHref,
-                        relativeTo:
-                            baseURL
-                    )?
-                    .absoluteURL,
-                absoluteURL.host ==
-                    baseURL.host,
-                let title =
-                    title(
-                        from:
-                            absoluteURL
-                    ),
+                        string: rawURL,
+                        relativeTo: baseURL
+                    )?.absoluteURL,
+                absoluteURL.host == baseURL.host,
+                let title = title(from: absoluteURL),
                 !seen.contains(title),
-                let canonical =
-                    canonicalURL(
-                        title: title
-                    )
+                let canonical = canonicalURL(title: title)
             else {
                 continue
             }
 
             seen.insert(title)
-
-            values.append(
+            results.append(
                 ChordWikiSearchResult(
                     title: title,
                     url: canonical
                 )
             )
 
-            if values.count >= 30 {
+            if results.count >= 30 {
                 break
             }
         }
 
-        return values
+        return results
     }
 
     static func title(
@@ -383,7 +335,17 @@ enum ChordWikiSearchParser {
     }
 }
 
-actor ChordWikiMacClient {
+protocol ChordWikiClientProtocol: Sendable {
+    func search(
+        query: String
+    ) async throws -> [ChordWikiSearchResult]
+
+    func loadChart(
+        _ result: ChordWikiSearchResult
+    ) async throws -> ChordChart
+}
+
+actor ChordWikiMacClient: ChordWikiClientProtocol {
 
     private let session:
         URLSession
@@ -411,35 +373,8 @@ actor ChordWikiMacClient {
             return []
         }
 
-        var components =
-            URLComponents(
-                string:
-                    "https://ja.chordwiki.org/wiki.cgi"
-            )!
-
-        components.queryItems = [
-            URLQueryItem(
-                name: "c",
-                value: "search"
-            ),
-            URLQueryItem(
-                name: "q",
-                value: normalized
-            )
-        ]
-
-        guard let url =
-            components.url
-        else {
-            throw ClientError
-                .invalidURL
-        }
-
-        let html =
-            try await requestText(url)
-
-        return ChordWikiSearchParser
-            .parse(html: html)
+        return try await ChordWikiSearchWebLoader
+            .search(query: normalized)
     }
 
     func loadChart(
@@ -484,13 +419,26 @@ actor ChordWikiMacClient {
                 .missingChordSource
         }
 
+        // Some pages keep their main video link outside the editable chord source.
+        // A missing or unavailable media page must not prevent opening the chart.
+        var linkedMediaHTML: String?
+        if YouTubeLink.videoID(in: source) == nil {
+            components.queryItems = [
+                URLQueryItem(name: "t", value: result.title)
+            ]
+            if let pageURL = components.url {
+                linkedMediaHTML = try? await requestText(pageURL)
+            }
+        }
+
         return ChordChartParser
             .parse(
                 source,
                 fallbackTitle:
                     result.title,
                 sourceURL:
-                    result.url
+                    result.url,
+                linkedMediaHTML: linkedMediaHTML
             )
     }
 
@@ -629,6 +577,8 @@ actor ChordWikiMacClient {
         case httpFailure
         case invalidEncoding
         case missingChordSource
+        case invalidSearchResponse
+        case searchTimedOut
 
         var errorDescription:
             String? {
@@ -641,6 +591,10 @@ actor ChordWikiMacClient {
                 "ChordWikiの応答を読み取れませんでした。"
             case .missingChordSource:
                 "コード譜ソースを取得できませんでした。"
+            case .invalidSearchResponse:
+                "ChordWikiの検索結果を読み取れませんでした。"
+            case .searchTimedOut:
+                "ChordWikiの検索結果の読み込みがタイムアウトしました。"
             }
         }
     }

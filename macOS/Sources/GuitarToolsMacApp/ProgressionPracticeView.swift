@@ -43,7 +43,7 @@ struct ProgressionPracticeView:
                 ScrollView {
                     VStack(
                         alignment: .leading,
-                        spacing: 18
+                        spacing: MacLayout.sectionSpacing
                     ) {
                         currentChordCard
 
@@ -51,7 +51,8 @@ struct ProgressionPracticeView:
 
                         controlsGrid
                     }
-                    .padding(22)
+                    .padding(MacLayout.pagePadding)
+                    .macPageWidth(1_180)
                 }
                 .onChange(
                     of:
@@ -125,7 +126,7 @@ struct ProgressionPracticeView:
                         true
                 } label: {
                     Label(
-                        "Backing Track",
+                        "音源を読み込む",
                         systemImage:
                             "waveform"
                     )
@@ -186,74 +187,26 @@ struct ProgressionPracticeView:
         }
     }
 
-    private var header:
-        some View {
-        HStack(
-            alignment: .center,
-            spacing: 18
+    private var header: some View {
+        MacPageHeader(
+            model.title,
+            subtitle: model.artist.isEmpty ? "コードごとに拍数を設定" : model.artist
         ) {
-            VStack(
-                alignment: .leading,
-                spacing: 3
-            ) {
-                Text(model.title)
-                    .font(
-                        .title2
-                            .weight(
-                                .semibold
-                            )
-                    )
-
-                Text(
-                    model.artist.isEmpty
-                    ? "コード進行練習"
-                    : model.artist
+            VStack(alignment: .trailing, spacing: 10) {
+                MacStatusPill(
+                    text: model.isPlaying ? "再生中" : "停止中",
+                    systemImage: model.isPlaying ? "play.fill" : "pause.fill",
+                    role: model.isPlaying ? .success : .neutral
                 )
-                .font(.callout)
-                .foregroundStyle(
-                    .secondary
-                )
+                HStack(spacing: 18) {
+                    Stepper("\(model.bpm) BPM", value: $model.bpm, in: 30...300)
+                    Toggle("自動スクロール", isOn: $model.autoScroll)
+                        .toggleStyle(.switch)
+                }
             }
-
-            Spacer()
-
-            MacStatusPill(
-                text:
-                    model.isPlaying
-                    ? "Playing"
-                    : "Ready",
-                systemImage:
-                    model.isPlaying
-                    ? "play.fill"
-                    : "circle",
-                role:
-                    model.isPlaying
-                    ? .success
-                    : .neutral
-            )
-
-            Stepper(
-                "\(model.bpm) BPM",
-                value:
-                    $model.bpm,
-                in: 30...300
-            )
-
-            Toggle(
-                "自動スクロール",
-                isOn:
-                    $model.autoScroll
-            )
-            .toggleStyle(.switch)
         }
-        .padding(
-            .horizontal,
-            22
-        )
-        .padding(
-            .vertical,
-            14
-        )
+        .padding(.horizontal, MacLayout.pagePadding)
+        .padding(.vertical, 22)
     }
 
     @ViewBuilder
@@ -283,7 +236,7 @@ struct ProgressionPracticeView:
                     spacing: 4
                 ) {
                     Text(
-                        "Current"
+                        "現在のコード"
                     )
                     .foregroundStyle(
                         .secondary
@@ -294,46 +247,28 @@ struct ProgressionPracticeView:
                     )
                     .font(
                         .system(
-                            size: 64,
-                            weight: .bold,
+                            size: 84,
+                            weight: .light,
                             design:
                                 .rounded
                         )
                     )
 
                     Text(
-                        "\(model.beatInStep + 1) / \(step.beats) beats"
+                        "\(model.beatInStep + 1) / \(step.beats) 拍"
                     )
                     .foregroundStyle(
                         .secondary
                     )
                 }
 
-                if let shape =
-                    CommonGuitarChords
-                        .shape(
-                            named:
-                                step.lookupName
-                        ) {
-                    ChordShapeDiagram(
-                        shape: shape
-                    )
-                    .frame(
-                        width: 180
-                    )
-                }
+                ChordFingeringView(symbol: step.symbol)
+                    .frame(width: 180)
 
                 Spacer()
             }
-            .padding(18)
-            .background(
-                .quaternary
-                    .opacity(0.25),
-                in:
-                    RoundedRectangle(
-                        cornerRadius: 12
-                    )
-            )
+            .padding(28)
+            .macContentSurface(radius: MacLayout.heroRadius)
         }
     }
 
@@ -378,20 +313,11 @@ struct ProgressionPracticeView:
                                     .bold()
                             )
 
-                            if let shape =
-                                CommonGuitarChords
-                                    .shape(
-                                        named:
-                                            step.lookupName
-                                    ) {
-                                ChordShapeDiagram(
-                                    shape: shape,
-                                    compact: true
-                                )
-                                .frame(
-                                    width: 120
-                                )
-                            }
+                            ChordFingeringView(
+                                symbol: step.symbol, compact: true,
+                                previousSymbol: index > 0 ? model.progression[index - 1].symbol : nil
+                            )
+                            .frame(width: 120)
 
                             Stepper(
                                 "\(step.beats)拍",
@@ -429,30 +355,19 @@ struct ProgressionPracticeView:
                                 )
                             }
                         }
-                        .padding(12)
-                        .frame(
-                            width: 150
-                        )
-                        .background(
-                            model
-                                .currentStepIndex ==
-                            index
-                            ? Color
-                                .accentColor
-                                .opacity(
-                                    0.13
+                        .padding(16)
+                        .frame(width: 160)
+                        .macContentSurface(radius: 18)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 18)
+                                .strokeBorder(
+                                    model.currentStepIndex == index
+                                    ? Color.accentColor.opacity(0.7)
+                                    : Color.clear,
+                                    lineWidth: 2
                                 )
-                            : Color
-                                .secondary
-                                .opacity(
-                                    0.05
-                                ),
-                            in:
-                                RoundedRectangle(
-                                    cornerRadius:
-                                        10
-                                )
-                        )
+                                .allowsHitTesting(false)
+                        }
                         .id(step.id)
                     }
                 }
@@ -480,7 +395,7 @@ struct ProgressionPracticeView:
                     spacing: 10
                 ) {
                     Picker(
-                        "Root",
+                        "ルート",
                         selection:
                             $root
                     ) {
@@ -496,7 +411,7 @@ struct ProgressionPracticeView:
                     }
 
                     Picker(
-                        "Quality",
+                        "種類",
                         selection:
                             $quality
                     ) {
@@ -529,20 +444,20 @@ struct ProgressionPracticeView:
             }
 
             MacSection(
-                "Import / Song"
+                "曲の読み込み"
             ) {
                 VStack(
                     spacing: 8
                 ) {
                     Button(
-                        "ChordProを読み込む"
+                        "ChordPro を読み込む"
                     ) {
                         showingChordPro =
                             true
                     }
 
                     Button(
-                        "曲メタデータを検索"
+                        "曲を検索"
                     ) {
                         showingSongSearch =
                             true
@@ -600,7 +515,7 @@ struct ProgressionPracticeView:
             }
 
             MacSection(
-                "Backing Track"
+                "練習用音源"
             ) {
                 VStack(
                     alignment: .leading,
@@ -682,7 +597,7 @@ struct ProgressionPracticeView:
                     }
 
                     Toggle(
-                        "Backing trackと進行を同期",
+                        "音源とコード進行を同期",
                         isOn:
                             $model
                                 .syncBackingTrack
@@ -691,7 +606,7 @@ struct ProgressionPracticeView:
                     if model
                         .syncBackingTrack {
                         LabeledContent(
-                            "Offset"
+                            "同期位置の補正"
                         ) {
                             HStack {
                                 Slider(
@@ -814,7 +729,7 @@ private struct ChordProImportSheet:
             spacing: 12
         ) {
             Text(
-                "ChordPro Import"
+                "ChordPro の読み込み"
             )
             .font(.title2)
 
