@@ -153,7 +153,7 @@ struct ChordFollowPracticeView:
                     .controlSize(.small)
 
                 Text(
-                    "ChordWikiを検索中"
+                    "ChordWiki・U-FRETを検索中"
                 )
                 .foregroundStyle(
                     .secondary
@@ -207,7 +207,7 @@ struct ChordFollowPracticeView:
                             )
 
                             Text(
-                                "ChordWiki"
+                                result.subtitle
                             )
                             .font(.caption)
                             .foregroundStyle(
@@ -322,7 +322,7 @@ struct ChordFollowPracticeView:
                 if let url =
                     chart.sourceURL {
                     Link(
-                        "ChordWiki",
+                        chart.sourceName,
                         destination: url
                     )
                 }

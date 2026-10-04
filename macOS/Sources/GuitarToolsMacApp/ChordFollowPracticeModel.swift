@@ -125,7 +125,7 @@ final class ChordFollowPracticeModel:
             PracticeSessionStore(),
         client:
             any ChordWikiClientProtocol =
-            ChordWikiMacClient(),
+            ChordChartMacClient(),
         requestAudioStart: (() -> Void)? = nil
     ) {
         self.audio = audio

@@ -8,6 +8,21 @@ struct ChordWikiSearchResult:
 
     let title: String
     let url: URL
+    let artist: String
+
+    init(title: String, url: URL, artist: String = "") {
+        self.title = title
+        self.url = url
+        self.artist = artist
+    }
+
+    var sourceName: String {
+        ChordChartSource(url: url)?.name ?? "コード譜"
+    }
+
+    var subtitle: String {
+        artist.isEmpty ? sourceName : "\(artist) · \(sourceName)"
+    }
 
     var id: String {
         url.absoluteString

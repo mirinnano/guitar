@@ -121,7 +121,7 @@ final class ChordWikiViewerModel:
     init(
         client:
             any ChordWikiClientProtocol =
-            ChordWikiMacClient(),
+            ChordChartMacClient(),
         clock:
             any AudioHostClock =
             SystemAudioHostClock()

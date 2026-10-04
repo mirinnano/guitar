@@ -192,7 +192,7 @@ struct ChordWikiViewerView:
         some View {
         if model.isSearching {
             ProgressView(
-                "ChordWikiを検索中"
+                "ChordWiki・U-FRETを検索中"
             )
             .frame(
                 maxWidth: .infinity,
@@ -227,7 +227,12 @@ struct ChordWikiViewerView:
                             .secondary
                         )
 
-                        Text(result.title)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(result.title)
+                            Text(result.subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
 
                         Spacer()
 
@@ -435,7 +440,7 @@ struct ChordWikiViewerView:
                 if let url =
                     chart.sourceURL {
                     Link(
-                        "ChordWiki",
+                        chart.sourceName,
                         destination:
                             url
                     )
@@ -786,7 +791,7 @@ struct ChordWikiViewerView:
                 .frame(height: 200)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                Text(chart.youtubeVideoID == videoID ? "ChordWikiの動画リンク" : "指定したYouTube動画")
+                Text(chart.youtubeVideoID == videoID ? "譜面の動画リンク" : "指定したYouTube動画")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 

@@ -16,7 +16,7 @@ struct ChartSearchStateView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                MacPageHeader(title, subtitle: "ChordWikiの曲名・アーティスト名で検索")
+                MacPageHeader(title, subtitle: "ChordWiki・U-FRETの曲名・アーティスト名で検索")
                 MacSection("曲を探す") {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 10) {
