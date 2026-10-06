@@ -10,11 +10,11 @@
 ## ダウンロードとインストール
 
 1. [公式GitHubリリース](https://github.com/mirinnano/guitar/releases/latest)で、バージョンと未公証の注意を確認します。
-2. `Guitar Tools-X.Y.Z.dmg`と同じバージョンの`.sha256`をダウンロードします。
+2. `Guitar.Tools-X.Y.Z.dmg`と同じバージョンの`.sha256`をダウンロードします。
 3. 必要に応じて、ターミナルでDMGのSHA-256を計算し、添付ファイルの値と比較します。
 
 ```bash
-shasum -a 256 "$HOME/Downloads/Guitar Tools-0.3.1.dmg"
+shasum -a 256 "$HOME/Downloads/Guitar.Tools-0.3.1.dmg"
 ```
 
 チェックサムは破損やファイルの違いを確認するためのものです。

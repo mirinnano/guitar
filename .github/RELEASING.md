@@ -78,8 +78,10 @@ The **macOS Release** workflow runs Swift tests, packages and verifies the app,
 checks the plist version and icon, runs `--smoke-test`, and creates the shared GitHub Release using the versioned notes.
 It uploads:
 
-- `Guitar Tools-X.Y.Z.dmg`
-- `Guitar Tools-X.Y.Z.sha256`
+- `Guitar.Tools-X.Y.Z.dmg`
+- `Guitar.Tools-X.Y.Z.sha256`
+
+GitHub normalizes spaces in uploaded asset names to dots. The workflow creates a spaced filename locally; users download the dotted name above.
 
 The app bundle is also retained as an Actions artifact.
 
