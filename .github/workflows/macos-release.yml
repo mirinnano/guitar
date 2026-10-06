@@ -67,6 +67,9 @@ jobs:
           codesign --verify --deep --strict "$APP"
           plutil -lint "$APP/Contents/Info.plist"
           test -x "$APP/Contents/MacOS/GuitarToolsMacApp"
+          test -s "$APP/Contents/Resources/AppIcon.icns"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$APP/Contents/Info.plist")" = "AppIcon"
+          file "$APP/Contents/MacOS/GuitarToolsMacApp"
           "$APP/Contents/MacOS/GuitarToolsMacApp" --smoke-test
 
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"

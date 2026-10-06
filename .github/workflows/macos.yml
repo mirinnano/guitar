@@ -45,6 +45,9 @@ jobs:
         run: |
           plutil -lint "macOS/dist/Guitar Tools.app/Contents/Info.plist"
           test -x "macOS/dist/Guitar Tools.app/Contents/MacOS/GuitarToolsMacApp"
+          test -s "macOS/dist/Guitar Tools.app/Contents/Resources/AppIcon.icns"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "macOS/dist/Guitar Tools.app/Contents/Info.plist")" = "AppIcon"
+          file "macOS/dist/Guitar Tools.app/Contents/MacOS/GuitarToolsMacApp"
           "macOS/dist/Guitar Tools.app/Contents/MacOS/GuitarToolsMacApp" --smoke-test
 
       - name: Verify artifact contents

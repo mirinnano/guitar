@@ -1,6 +1,21 @@
 # Releasing Guitar Tools
 
-Releases are created automatically from semantic-version tags such as `v0.1.0`.
+Semantic-version tags (`vX.Y.Z`) publish a shared macOS / Android release.
+Never move a published tag or replace it with different source code.
+
+## Preflight
+
+1. Run Swift tests, Debug / Release builds, and relevant live UI checks.
+2. Check `macOS/AppResources/Info.plist` version against the intended tag and update its build number.
+3. Keep `AppIcon.png` and `AppIcon.icns` in sync using `macOS/scripts/generate-app-icon.sh`.
+4. Confirm `docs/releases/vX.Y.Z.md` exists and describes signing, notarization and CPU support honestly.
+5. Update README, install instructions, and original demo screenshots as needed.
+6. Push the release commit to `main` and wait for required CI checks to pass.
+
+Mac builds currently use **ad-hoc signing, without Developer ID or notarization**.
+`macos-15` currently supplies an arm64 runner, so the distributed app targets Apple Silicon.
+There is no universal / Intel binary. Confirm runner architecture in each release.
+Do not describe signature verification as Apple approval or Gatekeeper acceptance.
 
 ## 1. Create the release signing key once
 
@@ -46,35 +61,42 @@ Create these four secrets:
 
 The GetSongBPM secret is optional. Without it, song search falls back to MusicBrainz and the app remains fully buildable.
 
-## 4. Publish a release
+## Publish
 
-After the release commit is on `main`, either push a semantic version tag:
+After successful main CI, tag the verified commit:
 
 ```bash
-git checkout main
-git pull
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-or create/push a `release/vX.Y.Z` branch. Both routes run the same signed release workflow.
+`release/vX.Y.Z` branches also trigger the workflows, but a single immutable tag is preferred for a public release.
 
-The `Release APK` workflow will:
+The **macOS Release** workflow runs Swift tests, packages and verifies the app,
+checks the plist version and icon, runs `--smoke-test`, and creates the shared GitHub Release using the versioned notes.
+It uploads:
 
-1. Validate the semantic-version tag.
-2. Restore the signing keystore only inside the GitHub runner.
-3. Run unit tests.
-4. Build `assembleRelease`.
-5. Verify the APK signature with `apksigner`.
-6. Generate a SHA-256 checksum.
-7. Upload the APK as a workflow artifact.
-8. Create a GitHub Release containing:
-   - `guitar-tools-v0.1.0.apk`
-   - `guitar-tools-v0.1.0.apk.sha256`
+- `Guitar Tools-X.Y.Z.dmg`
+- `Guitar Tools-X.Y.Z.sha256`
 
-The tag also controls Android version metadata. For example:
+The app bundle is also retained as an Actions artifact.
 
-- `v0.1.0` → `versionName 0.1.0`, `versionCode 100`
-- `v1.2.3` → `versionName 1.2.3`, `versionCode 10203`
+The **Release APK** workflow restores the existing signing key inside the runner,
+runs Android unit tests, builds and verifies a signed APK, then attaches it to the same release:
 
-Use each semantic version only once, and always increase the version for later releases.
+- `guitar-tools-vX.Y.Z.apk`
+- `guitar-tools-vX.Y.Z.apk.sha256`
+
+The APK workflow waits for the Mac workflow to create the release.
+If its bounded wait expires, confirm the Mac workflow succeeded before rerunning the APK job.
+Do not generate a new Android signing key for an update.
+
+## Post-release checks
+
+- Both release workflows succeeded, and all four expected assets are present.
+- Download DMG / APK and verify their SHA-256 values against the attached checksum files.
+- Verify the packaged icon, bundle version, binary architecture, ad-hoc signature, and smoke test.
+- Live UI checks, local tests, CI tests, and a clean Mac first-install test are different evidence. Report each separately.
+- Publish announcements from `docs/launch.md` only to destinations authorized by the maintainer.
+
+Android version metadata derives from the tag: `v1.2.3` yields versionName `1.2.3` and versionCode `10203`.

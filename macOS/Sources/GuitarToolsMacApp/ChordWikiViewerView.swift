@@ -274,8 +274,6 @@ struct ChordWikiViewerView:
             VStack(spacing: 0) {
             header(chart)
 
-            Divider()
-
             if model.countInRemaining != nil || model.calibrationMode {
                 currentPositionBar
                 Divider()
@@ -338,6 +336,15 @@ struct ChordWikiViewerView:
                             .center
                     )
                 }
+                .background(Color(nsColor: .textBackgroundColor))
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    transport
+                        .frame(maxWidth: 880)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
+                        .padding(.bottom, 16)
+                        .frame(maxWidth: .infinity)
+                }
                 .task(id: scrollTrackingID) {
                     guard model.autoScroll, !model.calibrationMode,
                           let line = model.currentLine else { return }
@@ -369,11 +376,6 @@ struct ChordWikiViewerView:
             .frame(minHeight: 0, maxHeight: .infinity)
             .clipped()
 
-            transport
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(1)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .onAppear { musicPanelPresented = !compact && model.youtubeVideoID != nil }
@@ -399,7 +401,7 @@ struct ChordWikiViewerView:
                 spacing: 3
             ) {
                 Text(chart.title)
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 26, weight: .bold))
                     .lineLimit(2)
                     .accessibilityAddTraits(.isHeader)
 
@@ -408,7 +410,7 @@ struct ChordWikiViewerView:
                     Text(
                         chart.artist
                     )
-                    .font(.caption)
+                    .font(.callout)
                     .lineLimit(1)
                     .foregroundStyle(.secondary)
                 }
@@ -430,10 +432,6 @@ struct ChordWikiViewerView:
                     "\(chart.beatsPerBar)/\(chart.beatUnit)"
                 )
 
-                Text(
-                    "\(model.timeline?.barNumber(atBeat: model.currentBeat) ?? 1)小節目"
-                )
-
                 if let url =
                     chart.sourceURL {
                     Link(
@@ -443,10 +441,9 @@ struct ChordWikiViewerView:
                     )
                 }
             }
-            .font(.caption)
-            .foregroundStyle(
-                .secondary
-            )
+            .font(.callout)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
 
             ChartFingeringContext(chart: chart)
 
@@ -456,8 +453,9 @@ struct ChordWikiViewerView:
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(
             .vertical,
-            13
+            20
         )
+        .background(Color(nsColor: .textBackgroundColor))
     }
 
     private var currentPositionBar: some View {
@@ -479,15 +477,21 @@ struct ChordWikiViewerView:
 
     private var transport:
         some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
                     playbackButtons
                     Spacer(minLength: 12)
+                    currentChord
+                    Spacer(minLength: 12)
                     HStack(spacing: 12) { practiceControls }
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 10) { playbackButtons }
+                    HStack(spacing: 10) {
+                        playbackButtons
+                        Spacer(minLength: 8)
+                        currentChord
+                    }
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 12) { practiceControls }
                         VStack(alignment: .leading, spacing: 6) { practiceControls }
@@ -531,6 +535,7 @@ struct ChordWikiViewerView:
                         0.01
                     )
             )
+            .accessibilityLabel("譜面の再生位置")
 
             HStack {
                 Text(
@@ -553,15 +558,7 @@ struct ChordWikiViewerView:
 
                 Spacer()
 
-                Text(
-                    model
-                        .currentEvent?
-                        .symbol
-                    ?? "—"
-                )
-                .fontWeight(
-                    .medium
-                )
+                Text("\(model.timeline?.barNumber(atBeat: model.currentBeat) ?? 1)小節目")
 
                 Spacer()
 
@@ -589,12 +586,10 @@ struct ChordWikiViewerView:
                 )
             }
             .font(
-                .caption
+                .callout
                     .monospacedDigit()
             )
-            .foregroundStyle(
-                .secondary
-            )
+            .foregroundStyle(.primary)
         }
         .padding(
             .horizontal,
@@ -602,20 +597,37 @@ struct ChordWikiViewerView:
         )
         .padding(
             .vertical,
-            8
+            14
         )
-        .macGlassSurface()
+        .macGlassSurface(radius: 26)
+    }
+
+    private var currentChord: some View {
+        Text(model.currentEvent?.symbol ?? "—")
+            .font(.system(size: 19, weight: .semibold, design: .rounded))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .accessibilityLabel("現在のコード")
+            .accessibilityValue(model.currentEvent?.symbol ?? "なし")
     }
 
     private var playbackButtons: some View {
         Group {
             Button(action: togglePlayback) {
-                Label(playbackActive ? "一時停止" : "再生", systemImage: playbackActive ? "pause.fill" : "play.fill")
+                Image(systemName: playbackActive ? "pause.fill" : "play.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 24, height: 24)
             }
             .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.circle)
+            .controlSize(.large)
+            .accessibilityLabel(playbackActive ? "一時停止" : "再生")
+            .help(playbackActive ? "一時停止（⌘Return）" : "再生（⌘Return）")
             Button(musicPanelPresented ? "音楽を閉じて停止" : "音楽", systemImage: "music.note") {
                 setMusicPanelPresented(!musicPanelPresented)
             }
+            .buttonStyle(.borderless)
+            .controlSize(.large)
             .help("音楽パネルを閉じると動画再生も停止します。")
         }
     }
@@ -633,9 +645,17 @@ struct ChordWikiViewerView:
                     Text(String(format: "%g×", rate)).tag(rate)
                 }
             }
-            .frame(width: 115)
-            Toggle("区間リピート", isOn: Binding(get: { model.loopEnabled }, set: model.setLoopEnabled))
-            Menu("区間設定") {
+            .labelsHidden()
+            .frame(width: 76)
+            .help("再生速度")
+            Toggle(isOn: Binding(get: { model.loopEnabled }, set: model.setLoopEnabled)) {
+                Label("区間リピート", systemImage: "repeat")
+            }
+            .labelStyle(.iconOnly)
+            .toggleStyle(.button)
+            .buttonStyle(.borderless)
+            .help("設定した区間を繰り返す")
+            Menu("区間") {
                 Button("ここから4小節") {
                     model.useFourBarLoop()
                     if let range = model.practiceLoop { seekPlayback(to: range.startBeat) }
@@ -644,6 +664,9 @@ struct ChordWikiViewerView:
                 Button("現在位置をB（終了）に設定", action: model.setLoopEnd)
                     .disabled(model.currentBeat <= (model.practiceLoop?.startBeat ?? 0))
             }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("繰り返す区間の開始・終了位置を設定")
             if model.loopEnabled, let range = model.practiceLoop {
                 let bar = Double(model.timeline?.beatsPerBar ?? 4)
                 Text("\(Int(floor(range.startBeat / bar)) + 1)〜\(Int(ceil(range.endBeat / bar)))小節")
@@ -782,8 +805,7 @@ struct ChordWikiViewerView:
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .padding(12)
-            Divider()
+            .padding(16)
             switch inspectorTab {
             case .chords:
                 ChartChordSummaryView(chart: chart)

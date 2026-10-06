@@ -205,6 +205,7 @@ struct MacAudioLevelMeter: View {
 
 private struct MacContentSurface: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
     let radius: CGFloat
 
     func body(content: Content) -> some View {
@@ -216,8 +217,8 @@ private struct MacContentSurface: ViewModifier {
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(
-                        Color.primary.opacity(colorScheme == .dark ? 0.09 : 0.045),
-                        lineWidth: 1
+                        Color.primary.opacity(contrast == .increased ? 0.35 : (colorScheme == .dark ? 0.09 : 0.06)),
+                        lineWidth: contrast == .increased ? 1.5 : 1
                     )
                     .allowsHitTesting(false)
             }
@@ -257,12 +258,13 @@ private struct MacGlassSurface: ViewModifier {
 }
 
 private struct MacActionButton: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let prominent: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
+        if #available(macOS 26.0, *), !reduceTransparency {
             if prominent {
                 content.buttonStyle(.glassProminent).tint(.accentColor)
             } else {

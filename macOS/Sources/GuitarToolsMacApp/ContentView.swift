@@ -1,3 +1,4 @@
+import GuitarToolsCore
 import SwiftUI
 
 enum MacTool:
@@ -15,12 +16,6 @@ enum MacTool:
         "譜面"
     case fretboard =
         "指板"
-    case practice =
-        "コード進行"
-    case chordFollow =
-        "演奏判定"
-    case chordDetection =
-        "コード判定"
 
     var id: String {
         rawValue
@@ -38,12 +33,6 @@ enum MacTool:
             "music.note.list"
         case .fretboard:
             "rectangle.grid.1x2"
-        case .practice:
-            "repeat"
-        case .chordFollow:
-            "scope"
-        case .chordDetection:
-            "waveform.badge.magnifyingglass"
         }
     }
 }
@@ -63,10 +52,7 @@ struct ContentView: View {
         MacTool? =
         .charts
 
-    @State private var practiceRequest: ChartPracticeRequest?
     @StateObject private var chartModel: ChordWikiViewerModel
-    @State private var additionalToolsExpanded = false
-    @StateObject private var practiceModel: ChordFollowPracticeModel
     @StateObject private var chordLearning = ChordLearningModel()
 
     init() {
@@ -75,12 +61,20 @@ struct ContentView: View {
         _audio = StateObject(wrappedValue: audio)
         _preferences = StateObject(wrappedValue: preferences)
         _output = StateObject(wrappedValue: AudioOutputModel(preferencesStore: preferences))
-        let charts = ChordWikiViewerModel(recentStore: RecentChartsStore(), timingDefaults: .standard)
+        let charts: ChordWikiViewerModel
+        #if DEBUG
+        if CommandLine.arguments.contains("--showcase") || Bundle.main.object(forInfoDictionaryKey: "GuitarToolsShowcase") as? Bool == true {
+            // Original demo content for screenshots; never reads or saves the user's chart history.
+            charts = ChordWikiViewerModel(client: ShowcaseChartClient())
+            charts.open(ChordWikiSearchResult(title: "Evening Drive", url: URL(string: "https://example.invalid/showcase")!))
+        } else {
+            charts = ChordWikiViewerModel(recentStore: RecentChartsStore(), timingDefaults: .standard)
+        }
+        #else
+        charts = ChordWikiViewerModel(recentStore: RecentChartsStore(), timingDefaults: .standard)
+        #endif
         charts.countInEnabled = false
         _chartModel = StateObject(wrappedValue: charts)
-        _practiceModel = StateObject(wrappedValue: ChordFollowPracticeModel(
-            audio: audio, preferencesStore: preferences
-        ))
     }
 
     var body: some View {
@@ -97,18 +91,10 @@ struct ContentView: View {
                     navigationItem(.chords)
                     navigationItem(.fretboard)
                 }
-
-                DisclosureGroup("その他のツール", isExpanded: $additionalToolsExpanded) {
-                    navigationItem(.practice)
-                    navigationItem(.chordFollow)
-                    navigationItem(.chordDetection)
-                }
-
             }
             .listStyle(.sidebar)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if selection == .tuner || selection == .chordFollow || selection == .chordDetection
-                    || audio.isStartRequested || audio.isRunning {
+                if selection == .tuner || audio.isStartRequested || audio.isRunning {
                     audioFooter
                         .padding(12)
                 }
@@ -197,36 +183,13 @@ struct ContentView: View {
             ChordsView(learning: chordLearning)
 
         case .charts:
-            ChordWikiViewerView(model: chartModel, onPractice: { request in
-                practiceRequest = request
-                selection = .chordFollow
-            }, onLearnChords: { symbols, title in
+            ChordWikiViewerView(model: chartModel, onLearnChords: { symbols, title in
                 chordLearning.startCustom(symbols: symbols, title: title)
                 selection = .chords
             })
 
         case .fretboard:
             FretboardView()
-
-        case .practice:
-            ProgressionPracticeView()
-
-        case .chordFollow:
-            ChordFollowPracticeView(
-                audio: audio,
-                model: practiceModel,
-                practiceRequest: practiceRequest,
-                onPracticeRequestConsumed: { id in
-                    if practiceRequest?.id == id {
-                        practiceRequest = nil
-                    }
-                }
-            )
-
-        case .chordDetection:
-            ChordDetectionView(
-                audio: audio
-            )
 
         case .none:
             ContentUnavailableView(
@@ -323,6 +286,36 @@ struct ContentView: View {
         }
     }
 }
+
+#if DEBUG
+/// A developer-only, offline chart with original text for reproducible public screenshots.
+private struct ShowcaseChartClient: ChordWikiClientProtocol {
+    func search(query: String) async throws -> [ChordWikiSearchResult] { [] }
+    func loadChart(_ result: ChordWikiSearchResult) async throws -> ChordChart {
+        ChordChartParser.parse("""
+        {title:Evening Drive}
+        {subtitle:デモ譜面 · Guitar Tools}
+        {key:C}
+        {bpm:92}
+        {comment:Intro}
+        [CM7]    │[Am7]    │[Dm7]    │[G7]    │
+        [CM7]    │[Am7]    │[FM7]    │[G7]    │
+
+        {comment:Theme}
+        [CM7]窓を開けて　[Am7]少し遠くへ
+        [Dm7]夜の道を　[G7]ゆっくり走る
+        [Em7]    │[Am7]    │[Dm7]    │[G7]    │
+
+        {comment:Bridge}
+        [FM7]    │[Em7]    │[Dm7]    │[G7]    │
+        [FM7]    │[G7]     │[CM7]    │[CM7]    │
+
+        {comment:Outro}
+        [Dm7]    │[G7]     │[CM7]    │[CM7]    │
+        """, fallbackTitle: result.title)
+    }
+}
+#endif
 
 struct MacAboutView:
     View {

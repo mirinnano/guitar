@@ -15,23 +15,35 @@ struct ChartChordSummaryView: View {
 
     var body: some View {
         let symbols = Self.symbols(in: chart)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("使用コード（\(symbols.count)種類）")
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("使用コード")
                     .font(.headline)
-                LazyVGrid(columns: [GridItem(.flexible(minimum: 128)), GridItem(.flexible(minimum: 128))], spacing: 12) {
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Text("\(symbols.count)種類")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 14)
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible(minimum: 120)), GridItem(.flexible(minimum: 120))], spacing: 12) {
                     ForEach(symbols, id: \.self) { symbol in
-                        GroupBox {
-                            ChordFingeringView(symbol: symbol, compact: true)
-                                .frame(maxWidth: .infinity)
-                                .padding(4)
-                        }
+                        ChordFingeringView(symbol: symbol, compact: true)
+                            .frame(maxWidth: .infinity, minHeight: 138, alignment: .top)
+                            .padding(10)
+                            .macContentSurface(radius: 14)
                     }
                 }
-                if !symbols.isEmpty { ChordFingerLegend() }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+                if !symbols.isEmpty {
+                    ChordFingerLegend()
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 20)
+                }
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

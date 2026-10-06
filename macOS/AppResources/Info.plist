@@ -16,6 +16,8 @@
     <string>Guitar Tools</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
     <string>0.3.0</string>
     <key>CFBundleVersion</key>
@@ -25,6 +27,6 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>オーディオインターフェースからギター入力を解析し、チューニングやコード判定などの練習支援に使用します。</string>
+    <string>マイクまたはオーディオインターフェースのギター入力から、チューナーで音程を表示するために使用します。</string>
 </dict>
 </plist>

@@ -1,0 +1,38 @@
+name: 不具合の報告
+description: 譜面、動画、音声入力、表示の問題を報告する
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "歌詞全文、無許諾の音源、APIキーなどの機密情報は添付しないでください。画像は該当箇所だけにしてください。"
+  - type: input
+    id: version
+    attributes:
+      label: アプリのバージョン
+      placeholder: v0.3.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OSと機種
+      placeholder: macOS 26、M2 MacBook Air / Android 15
+    validations:
+      required: true
+  - type: input
+    id: chart
+    attributes:
+      label: 曲名と元の譜面URL（譜面の問題の場合）
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 再現手順と表示設定
+      description: 再生位置、BPM、小節数、文字サイズ、動画同期の有無も記載してください。音声入力なら機器とチャンネルも記載してください。
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 期待した動作と実際の動作
+    validations:
+      required: true

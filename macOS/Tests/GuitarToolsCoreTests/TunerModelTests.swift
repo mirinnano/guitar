@@ -19,7 +19,9 @@ final class TunerModelTests: XCTestCase {
     }
 
     func testExternalInputStopClearsTheReadingWithoutAnotherPCMFrame() async throws {
-        let h = fixture()
+        // This tests input lifecycle, not DSP throughput. Keep the analysis fast
+        // so a loaded CI runner cannot expire the synthetic PCM before delivery.
+        let h = fixture(pipeline: TunerAnalysisPipeline { _, _ in 220 })
         defer { h.model.stop(); h.audio.stop() }
         h.model.start()
         feed(h.capture, frequency: 220, chunkSize: 8_192)
@@ -134,12 +136,15 @@ final class TunerModelTests: XCTestCase {
         XCTAssertEqual(h.model.sensitivity, 0)
     }
 
-    private func fixture(clock: any AudioHostClock = SystemAudioHostClock()) -> TunerHarness {
+    private func fixture(clock: any AudioHostClock = SystemAudioHostClock(),
+                         pipeline: TunerAnalysisPipeline = TunerAnalysisPipeline()) -> TunerHarness {
         let capture = TunerTestCapture()
         let audio = AudioInputModel(catalog: TunerTestCatalog(), permission: TunerTestPermission(), captureFactory: { capture })
         let defaults = UserDefaults(suiteName: "TunerModelTests.\(UUID().uuidString)")!
         let preferences = AppPreferencesStore(defaults: defaults)
-        return TunerHarness(audio: audio, capture: capture, preferences: preferences, model: TunerModel(audio: audio, preferencesStore: preferences, clock: clock))
+        return TunerHarness(audio: audio, capture: capture, preferences: preferences,
+                            model: TunerModel(audio: audio, preferencesStore: preferences,
+                                              analysisPipeline: pipeline, clock: clock))
     }
 
     private func feed(_ capture: TunerTestCapture, frequency: Double, chunkSize: Int, sampleRate: Double = 48_000, amplitude: Double = 0.2, count: Int = 24_576, startSeconds: Double = 100) {

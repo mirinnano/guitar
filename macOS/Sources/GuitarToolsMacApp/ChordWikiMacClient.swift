@@ -438,13 +438,10 @@ actor ChordWikiMacClient: ChordWikiClientProtocol {
         // Some pages keep their main video link outside the editable chord source.
         // A missing or unavailable media page must not prevent opening the chart.
         var linkedMediaHTML: String?
-        if YouTubeLink.videoID(in: source) == nil {
-            components.queryItems = [
-                URLQueryItem(name: "t", value: result.title)
-            ]
-            if let pageURL = components.url {
-                linkedMediaHTML = try? await requestText(pageURL)
-            }
+        // wiki.cgi?t=... serves the homepage, not the song's 楽曲情報.
+        if YouTubeLink.videoID(in: source) == nil,
+           let pageURL = ChordWikiSearchParser.canonicalURL(title: result.title) {
+            linkedMediaHTML = try? await requestText(pageURL)
         }
 
         return ChordChartParser

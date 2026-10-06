@@ -1,0 +1,18 @@
+name: 使い勝手の改善案
+description: 弾いているときに困ること、便利になることを伝える
+title: "[UX] "
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: どんな場面で、何に困っていますか？
+      description: 好きな曲を弾いているときの具体的な場面を教えてください。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 希望する変更
+      description: 操作が減る、譜面が読みやすくなるなど、どう便利になるかも教えてください。
+    validations:
+      required: true
