@@ -89,9 +89,12 @@ public enum NoCapoGuitarVoicings {
                         let internalMuted = sounding.first.flatMap { first in
                             sounding.last.map { last in (first..<last).filter { frets[$0] < 0 }.count }
                         } ?? 0
-                        let preliminary = omissionPenalty + (positive.max() ?? 0) * 100 +
-                            frets.filter { $0 < 0 }.count * 12 + internalMuted * 160 +
-                            (positive.max() ?? 0) - (positive.min() ?? 0) + positive.reduce(0, +)
+                        var preliminary = omissionPenalty
+                        preliminary += (positive.max() ?? 0) * 100
+                        preliminary += frets.filter { $0 < 0 }.count * 12
+                        preliminary += internalMuted * 160
+                        preliminary += (positive.max() ?? 0) - (positive.min() ?? 0)
+                        preliminary += positive.reduce(0, +)
                         // Finger cost is nonnegative, so reject candidates that
                         // cannot improve the bounded three-entry window pool.
                         if best.count == 3, preliminary > best[2].score { return }
@@ -262,9 +265,12 @@ public enum NoCapoGuitarVoicings {
                     // slightly lower fret with awkward internally muted strings.
                     // All score terms remain nonnegative, so low * 100 is still
                     // a safe lower bound for pruning subsequent fret windows.
-                    let score = (positive.max() ?? 0) * 100 + muted * 12 + internalMuted * 160 +
-                        Set(shape.fingers.compactMap { $0 }).count * 5 +
-                        (positive.max() ?? 0) - (positive.min() ?? 0) + positive.reduce(0, +)
+                    var score = (positive.max() ?? 0) * 100
+                    score += muted * 12
+                    score += internalMuted * 160
+                    score += Set(shape.fingers.compactMap { $0 }).count * 5
+                    score += (positive.max() ?? 0) - (positive.min() ?? 0)
+                    score += positive.reduce(0, +)
                     if score < bestScore { best = shape; bestScore = score }
                     return
                 }
