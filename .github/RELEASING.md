@@ -68,8 +68,8 @@ The GetSongBPM secret is optional. Without it, song search falls back to MusicBr
 After successful main CI, tag the verified commit:
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 `release/vX.Y.Z` branches also trigger the workflows, but a single immutable tag is preferred for a public release.

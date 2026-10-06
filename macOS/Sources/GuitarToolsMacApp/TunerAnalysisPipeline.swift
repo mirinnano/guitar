@@ -21,6 +21,7 @@ final class TunerAnalysisPipeline: @unchecked Sendable {
 
     private let lock = NSLock()
     private let queue = DispatchQueue(label: "dev.mirinnano.guitartools.mac.tuner", qos: .userInitiated)
+    private let clock: any AudioHostClock
     private let detectPitch: @Sendable ([Float], Double) -> Double?
     private var accumulator = TunerFrameAccumulator()
     private var generation = UUID()
@@ -31,9 +32,11 @@ final class TunerAnalysisPipeline: @unchecked Sendable {
     private var lastPCMReceivedAt: Double?
     private var onResult: (@Sendable (TunerAnalysisResult) -> Void)?
 
-    init(detectPitch: @escaping @Sendable ([Float], Double) -> Double? = { samples, rate in
+    init(clock: any AudioHostClock = SystemAudioHostClock(),
+         detectPitch: @escaping @Sendable ([Float], Double) -> Double? = { samples, rate in
         YinPitchDetector(minimumFrequencyHz: 27.5).detect(samples: samples, sampleRate: rate)
     }) {
+        self.clock = clock
         self.detectPitch = detectPitch
     }
 
@@ -75,7 +78,7 @@ final class TunerAnalysisPipeline: @unchecked Sendable {
     func ingest(samples: [Float], sampleRate: Double, timestampSeconds: Double) {
         lock.lock()
         guard active else { lock.unlock(); return }
-        lastPCMReceivedAt = ProcessInfo.processInfo.systemUptime
+        lastPCMReceivedAt = clock.nowSeconds()
         let previousRevision = accumulator.revision
         let frame = accumulator.append(samples: samples, sampleRate: sampleRate, timestampSeconds: timestampSeconds)
         var resetResult: TunerAnalysisResult?
@@ -103,7 +106,7 @@ final class TunerAnalysisPipeline: @unchecked Sendable {
     }
 
     private func hasFreshPCMLocked() -> Bool {
-        lastPCMReceivedAt.map { ProcessInfo.processInfo.systemUptime - $0 <= Self.freshnessSeconds } ?? false
+        lastPCMReceivedAt.map { clock.nowSeconds() - $0 <= Self.freshnessSeconds } ?? false
     }
 
     private func drain() {

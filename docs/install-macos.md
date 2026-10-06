@@ -14,7 +14,7 @@
 3. 必要に応じて、ターミナルでDMGのSHA-256を計算し、添付ファイルの値と比較します。
 
 ```bash
-shasum -a 256 "$HOME/Downloads/Guitar Tools-0.3.0.dmg"
+shasum -a 256 "$HOME/Downloads/Guitar Tools-0.3.1.dmg"
 ```
 
 チェックサムは破損やファイルの違いを確認するためのものです。

@@ -19,9 +19,7 @@ final class TunerModelTests: XCTestCase {
     }
 
     func testExternalInputStopClearsTheReadingWithoutAnotherPCMFrame() async throws {
-        // This tests input lifecycle, not DSP throughput. Keep the analysis fast
-        // so a loaded CI runner cannot expire the synthetic PCM before delivery.
-        let h = fixture(pipeline: TunerAnalysisPipeline { _, _ in 220 })
+        let h = fixture()
         defer { h.model.stop(); h.audio.stop() }
         h.model.start()
         feed(h.capture, frequency: 220, chunkSize: 8_192)
@@ -136,15 +134,16 @@ final class TunerModelTests: XCTestCase {
         XCTAssertEqual(h.model.sensitivity, 0)
     }
 
-    private func fixture(clock: any AudioHostClock = SystemAudioHostClock(),
-                         pipeline: TunerAnalysisPipeline = TunerAnalysisPipeline()) -> TunerHarness {
+    // Synthetic PCM arrives in a burst, not in real time. Keep its clock controlled
+    // so real YIN coverage does not become a CI CPU-throughput/freshness race.
+    private func fixture(clock: any AudioHostClock = TunerTestClock()) -> TunerHarness {
         let capture = TunerTestCapture()
         let audio = AudioInputModel(catalog: TunerTestCatalog(), permission: TunerTestPermission(), captureFactory: { capture })
         let defaults = UserDefaults(suiteName: "TunerModelTests.\(UUID().uuidString)")!
         let preferences = AppPreferencesStore(defaults: defaults)
         return TunerHarness(audio: audio, capture: capture, preferences: preferences,
                             model: TunerModel(audio: audio, preferencesStore: preferences,
-                                              analysisPipeline: pipeline, clock: clock))
+                                              analysisPipeline: TunerAnalysisPipeline(clock: clock), clock: clock))
     }
 
     private func feed(_ capture: TunerTestCapture, frequency: Double, chunkSize: Int, sampleRate: Double = 48_000, amplitude: Double = 0.2, count: Int = 24_576, startSeconds: Double = 100) {
@@ -157,7 +156,7 @@ final class TunerModelTests: XCTestCase {
     }
 
     private func waitUntil(_ predicate: () -> Bool) async {
-        for _ in 0..<150 {
+        for _ in 0..<500 {
             if predicate() { return }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -186,7 +185,12 @@ private struct TunerTestPermission: AudioInputPermissionProviding {
 }
 
 private final class TunerTestClock: AudioHostClock, @unchecked Sendable {
-    var time = 100.0
+    private let lock = NSLock()
+    private var storage = 100.0
+    var time: Double {
+        get { lock.withLock { storage } }
+        set { lock.withLock { storage = newValue } }
+    }
     func nowSeconds() -> Double { time }
     func seconds(forHostTime hostTime: UInt64) -> Double { Double(hostTime) / 1_000_000 }
 }

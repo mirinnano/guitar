@@ -1,21 +1,21 @@
-# v0.3.0の紹介素材
+# v0.3.1の紹介素材
 
 ## 対象と伝える内容
 
 中級者から熟練者で、普段は譜面やコードを見ながら好きな曲を弾くMacユーザーを対象にします。
 教材や上達の約束ではなく、譜面と押さえ方を見やすくまとめた道具として紹介します。
 
-公開導線は[README](../README.md)→[リリース](https://github.com/mirinnano/guitar/releases/tag/v0.3.0)→[導入手順](install-macos.md)です。
+公開導線は[README](../README.md)→[リリース](https://github.com/mirinnano/guitar/releases/tag/v0.3.1)→[導入手順](install-macos.md)です。
 画像は[自作デモ譜面の実画面](images/macos-sheet.png)と[アプリアイコン](../macOS/AppResources/AppIcon.png)を使用します。
 
 ## X向け告知案
 
 ```text
 好きな曲を開いて、そのまま弾く。
-Mac向け「Guitar Tools v0.3.0」を公開しました。
+Mac向け「Guitar Tools v0.3.1」を公開しました。
 譜面と使用コードの押さえ方を並べて、自動スクロール／区間リピートも。採点や練習の催促はしません。
 Apple Silicon／macOS 14以降。未公証（ad-hoc署名）のため導入時に注意あり。
-https://github.com/mirinnano/guitar/releases/tag/v0.3.0
+https://github.com/mirinnano/guitar/releases/tag/v0.3.1
 #ギター #Mac
 ```
 
@@ -30,7 +30,7 @@ Macで譜面を見ながら弾くためのGuitar Toolsを作っています。
 表示が崩れる曲があれば、曲名と元ページURL、該当箇所をIssueで教えてください。歌詞全文や音源の添付は不要です。
 
 Apple Silicon、macOS 14以降向け。Developer ID未署名、Apple未公証（ad-hoc署名）です。配布状態を確認してから導入してください。
-https://github.com/mirinnano/guitar/releases/tag/v0.3.0
+https://github.com/mirinnano/guitar/releases/tag/v0.3.1
 ```
 
 ## 公開後の運用

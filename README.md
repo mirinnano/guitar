@@ -8,7 +8,7 @@
 譜面、曲で使うコードの押さえ方、再生操作を一つの画面にまとめました。
 課題の提案や演奏の採点を始めず、必要な道具だけを手元に置きます。
 
-[ダウンロード](https://github.com/mirinnano/guitar/releases/latest) · [Macの導入手順](docs/install-macos.md) · [変更履歴](docs/releases/v0.3.0.md) · [不具合の報告](https://github.com/mirinnano/guitar/issues/new/choose)
+[ダウンロード](https://github.com/mirinnano/guitar/releases/latest) · [Macの導入手順](docs/install-macos.md) · [変更履歴](docs/releases/v0.3.1.md) · [不具合の報告](https://github.com/mirinnano/guitar/issues/new/choose)
 
 > **Mac版はDeveloper ID未署名、Apple未公証です（ad-hoc署名）。**
 > 初回起動時にmacOSがブロックする場合があります。

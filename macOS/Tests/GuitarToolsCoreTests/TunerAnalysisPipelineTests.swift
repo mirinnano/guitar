@@ -28,7 +28,8 @@ final class TunerAnalysisPipelineTests: XCTestCase {
         let started = expectation(description: "DSP started")
         let gate = DispatchSemaphore(value: 0)
         let recorded = TunerPipelineRecorder()
-        let pipeline = TunerAnalysisPipeline { _, _ in
+        let clock = PipelineTestClock()
+        let pipeline = TunerAnalysisPipeline(clock: clock) { _, _ in
             started.fulfill()
             _ = gate.wait(timeout: .now() + 2)
             return 110
@@ -36,7 +37,7 @@ final class TunerAnalysisPipelineTests: XCTestCase {
         pipeline.start(sensitivity: 0.6) { if !$0.isReset { recorded.add($0) } }
         pipeline.ingest(samples: tone(count: 16_384), sampleRate: 48_000, timestampSeconds: 100)
         await fulfillment(of: [started], timeout: 2)
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        clock.advance(by: TunerAnalysisPipeline.freshnessSeconds + 0.001)
         gate.signal()
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertTrue(recorded.results.isEmpty)
@@ -121,4 +122,12 @@ private final class TunerPipelineCounter: @unchecked Sendable {
     private var count = 0
     var value: Int { lock.lock(); defer { lock.unlock() }; return count }
     func increment() -> Int { lock.lock(); defer { lock.unlock() }; count += 1; return count }
+}
+
+private final class PipelineTestClock: AudioHostClock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var time = 100.0
+    func nowSeconds() -> Double { lock.withLock { time } }
+    func seconds(forHostTime hostTime: UInt64) -> Double { Double(hostTime) / 1_000_000 }
+    func advance(by seconds: Double) { lock.withLock { time += seconds } }
 }
