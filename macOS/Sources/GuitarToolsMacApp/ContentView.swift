@@ -340,7 +340,7 @@ struct MacAboutView:
                         spacing: 10
                     ) {
                         Label(
-                            "メトロノーム、チューナー、コード、譜面、指板、コード進行",
+                            "譜面、チューナー、メトロノーム、コード、指板",
                             systemImage:
                                 "checkmark.circle.fill"
                         )
@@ -352,7 +352,7 @@ struct MacAboutView:
                         )
 
                         Label(
-                            "入力音からコードと演奏タイミングを判定",
+                            "曲内の使用コードと押さえ方を常時表示",
                             systemImage:
                                 "checkmark.circle.fill"
                         )
