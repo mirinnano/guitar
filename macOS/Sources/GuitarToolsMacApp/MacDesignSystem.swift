@@ -232,16 +232,26 @@ private struct MacGlassSurface: ViewModifier {
     func body(content: Content) -> some View {
         if reduceTransparency {
             content.macContentSurface(radius: radius)
-        } else if #available(macOS 26.0, *) {
-            content.glassEffect(
-                .regular,
-                in: RoundedRectangle(cornerRadius: radius, style: .continuous)
-            )
         } else {
+            // Older CI SDKs cannot type-check Liquid Glass, even behind #available.
+            #if compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                content.glassEffect(
+                    .regular,
+                    in: RoundedRectangle(cornerRadius: radius, style: .continuous)
+                )
+            } else {
+                content.background(
+                    .regularMaterial,
+                    in: RoundedRectangle(cornerRadius: radius, style: .continuous)
+                )
+            }
+            #else
             content.background(
                 .regularMaterial,
                 in: RoundedRectangle(cornerRadius: radius, style: .continuous)
             )
+            #endif
         }
     }
 }
@@ -251,6 +261,7 @@ private struct MacActionButton: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             if prominent {
                 content.buttonStyle(.glassProminent).tint(.accentColor)
@@ -262,6 +273,13 @@ private struct MacActionButton: ViewModifier {
         } else {
             content.buttonStyle(.bordered)
         }
+        #else
+        if prominent {
+            content.buttonStyle(.borderedProminent).tint(.accentColor)
+        } else {
+            content.buttonStyle(.bordered)
+        }
+        #endif
     }
 }
 
