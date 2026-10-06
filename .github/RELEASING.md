@@ -14,6 +14,8 @@ Never move a published tag or replace it with different source code.
 
 Mac builds currently use **ad-hoc signing, without Developer ID or notarization**.
 `macos-15` currently supplies an arm64 runner, so the distributed app targets Apple Silicon.
+Both Mac workflows explicitly use Xcode 26.3 so native Liquid Glass is included,
+while runtime availability checks keep macOS 14/15 supported.
 There is no universal / Intel binary. Confirm runner architecture in each release.
 Do not describe signature verification as Apple approval or Gatekeeper acceptance.
 

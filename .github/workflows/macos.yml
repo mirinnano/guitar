@@ -18,6 +18,8 @@ concurrency:
 jobs:
   test-build-package:
     runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
 
     steps:
       - uses: actions/checkout@v5
