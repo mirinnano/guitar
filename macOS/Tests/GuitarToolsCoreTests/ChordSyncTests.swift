@@ -4,6 +4,19 @@ import XCTest
 final class ChordSyncTests:
     XCTestCase {
 
+    func testTempoMapAppliesWithoutAnchorsAndWithOneOffsetAnchor() {
+        let tempo = ChordTempoMap(bpm: 120, changes: [TimedTempoChange(startBeat: 4, bpm: 60)])
+        let plain = ChordSyncMap(anchors: [], fallbackBPM: 120, fallbackOffsetMs: 1_000, totalBeats: 12, tempoMap: tempo)
+        XCTAssertEqual(plain.videoPositionMs(forBeat: 8), 7_000)
+        XCTAssertEqual(plain.beat(forVideoPositionMs: 5_000), 6, accuracy: 0.001)
+        XCTAssertEqual(plain.localBPM(atBeat: 5), 60, accuracy: 0.001)
+        let anchored = ChordSyncMap(anchors: [anchor(beat: 8, milliseconds: 10_000)], fallbackBPM: 120, fallbackOffsetMs: 0, totalBeats: 12, tempoMap: tempo)
+        for beat in stride(from: 0.0, through: 12, by: 0.5) {
+            XCTAssertEqual(anchored.beat(forVideoPositionMs: anchored.videoPositionMs(forBeat: beat)), beat, accuracy: 0.001)
+        }
+        XCTAssertEqual(anchored.videoPositionMs(forBeat: 4), 6_000)
+    }
+
     func testTwoAnchorsWarpTime() {
         let map =
             ChordSyncMap(

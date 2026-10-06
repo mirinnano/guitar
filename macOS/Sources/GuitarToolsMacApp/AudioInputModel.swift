@@ -30,6 +30,9 @@ struct SystemAudioInputPermission: AudioInputPermissionProviding {
 /// render thread. Catalog, permission and capture dependencies are injectable.
 final class AudioInputModel: ObservableObject {
     @Published private(set) var isRunning = false
+    /// User intent, independent of capture: stays armed during permission or
+    /// reconnect waits, and is cleared by stop/cancellation or permission denial.
+    @Published private(set) var isStartRequested = false
     @Published private(set) var inputDevices: [CoreAudioInputDevice] = []
     @Published private(set) var selectedDeviceUID: String?
     @Published private(set) var inputLabel = "System Default Input"
@@ -84,7 +87,6 @@ final class AudioInputModel: ObservableObject {
     private var capture: (any AudioInputCapturing)?
     private var session: InputAnalysisSession?
     private var activeDevice: CoreAudioInputDevice?
-    private var wantsCapture = false
     private var permissionRequestID: UUID?
     private var applyingConfiguration = false
     private var routeFailureMessage: String?
@@ -174,18 +176,18 @@ final class AudioInputModel: ObservableObject {
             report(error)
             routeFailureMessage = errorMessage
             updateIdleDeviceMetadata()
-            // wantsCapture remains armed. A later catalog notification resolves
+            // isStartRequested remains armed. A later catalog notification resolves
             // this same UID again (including its new numeric device ID).
         }
     }
 
     func toggle() {
-        if isRunning || permissionRequestID != nil { stop() }
+        if isStartRequested || isRunning { stop() }
         else { requestPermissionAndStart() }
     }
 
     func requestPermissionAndStart() {
-        wantsCapture = true
+        isStartRequested = true
         guard !isRunning, permissionRequestID == nil else { return }
         errorMessage = nil
         switch permission.authorizationStatus {
@@ -197,7 +199,7 @@ final class AudioInputModel: ObservableObject {
             inputHealthMessage = "マイク/オーディオ入力の許可を待っています。"
             permission.requestAccess { [weak self] granted in
                 DispatchQueue.main.async {
-                    guard let self, self.permissionRequestID == requestID, self.wantsCapture else { return }
+                    guard let self, self.permissionRequestID == requestID, self.isStartRequested else { return }
                     self.permissionRequestID = nil
                     if granted { self.startCapture() }
                     else { self.reportPermissionDenied() }
@@ -209,21 +211,23 @@ final class AudioInputModel: ObservableObject {
     }
 
     func stop() {
-        wantsCapture = false
+        isStartRequested = false
         permissionRequestID = nil // A late permission completion must not start I/O.
+        if let routeFailureMessage, errorMessage == routeFailureMessage { errorMessage = nil }
+        routeFailureMessage = nil
         shutDownCapture()
         updateIdleDeviceMetadata()
     }
 
     private func resumeRequestedCapture() {
-        guard wantsCapture, !isRunning, permissionRequestID == nil else { return }
+        guard isStartRequested, !isRunning, permissionRequestID == nil else { return }
         // Reroutes/reconnects never request permission. Only user start does.
         if permission.authorizationStatus == .authorized { startCapture() }
         else if permission.authorizationStatus != .notDetermined { reportPermissionDenied() }
     }
 
     private func startCapture() {
-        guard wantsCapture, !isRunning else { return }
+        guard isStartRequested, !isRunning else { return }
         // No capture factory invocation until the user has started and the
         // existing microphone-permission flow has granted access.
         let generation = generations.begin()
@@ -395,7 +399,7 @@ final class AudioInputModel: ObservableObject {
             hardwareInputLatencyMs = 0
             channelLevelsDBFS = []
             inputLabel = selectedDeviceUID == nil ? "オーディオ入力なし" : "選択した入力（未接続）"
-            inputHealthMessage = errorMessage ?? error.localizedDescription
+            inputHealthMessage = errorMessage ?? errorDetail(error)
         }
     }
 
@@ -405,19 +409,24 @@ final class AudioInputModel: ObservableObject {
         return channelCount == 1 ? "\(name) · Mono" : "\(name) · Ch \(selectedChannel + 1)"
     }
 
-    private func report(_ error: Error, prefix: String? = nil) {
-        let detail: String
+    private func errorDetail(_ error: Error) -> String {
         if case let CoreAudioCatalogError.operationFailed(_, status) = error {
-            detail = "CoreAudioエラー（OSStatus \(status)）。別の入力には切り替えません。"
-        } else {
-            detail = error.localizedDescription
+            return "CoreAudioエラー（OSStatus \(status)）。別の入力には切り替えません。"
         }
+        if case InputCaptureError.selectedDeviceUnavailable = error, !isStartRequested {
+            return "選択したオーディオ入力デバイスが接続されていません。別の入力には切り替えません。再接続後に入力を開始してください。"
+        }
+        return error.localizedDescription
+    }
+
+    private func report(_ error: Error, prefix: String? = nil) {
+        let detail = errorDetail(error)
         errorMessage = prefix.map { "\($0): \(detail)" } ?? detail
         inputHealthMessage = errorMessage
     }
 
     private func reportPermissionDenied() {
-        wantsCapture = false
+        isStartRequested = false
         permissionDenied = true
         errorMessage = "マイク/オーディオ入力へのアクセスが許可されていません。システム設定 > プライバシーとセキュリティ > マイクで許可してください。"
         inputHealthMessage = errorMessage

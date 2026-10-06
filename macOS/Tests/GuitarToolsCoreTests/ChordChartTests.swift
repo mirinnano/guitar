@@ -4,6 +4,58 @@ import XCTest
 final class ChordChartTests:
     XCTestCase {
 
+    func testLaterTempoDoesNotOverwriteTheOpeningTempo() {
+        let chart = ChordChartParser.parse("{tempo:120}\n[C]first\n{tempo:60}\n[G]second", fallbackTitle: "Tempo change")
+        XCTAssertEqual(chart.bpm, 120)
+    }
+
+    func testUnicodeBarsAndUnmarkedLyricLinesKeepComparableDurations() {
+        // Matches the structure of Little Busters!: four marked intro bars,
+        // followed by lyrics without explicit bar lines (no copied lyrics).
+        let chart = ChordChartParser.parse("[C]a[G]b│[Am]c│[F]d[G]e│[C]f[G]g│\n[C]hello [G]world", fallbackTitle: "Mixed notation")
+        let timeline = ChordTimelineBuilder.build(chart: chart)
+        XCTAssertEqual(ChordTimelineBuilder.inferredUnmarkedBars(chart: chart), 4)
+        XCTAssertEqual(timeline.lineTimings.map(\.durationBeats), [16, 16])
+        XCTAssertEqual(timeline.totalBeats, 32)
+        XCTAssertEqual(timeline.events.filter { $0.lineIndex == 1 }.map(\.startBeat), [16, 24])
+        let corrected = ChordTimelineBuilder.build(chart: chart, unmarkedBarsPerLine: 2)
+        XCTAssertEqual(corrected.lineTimings.map(\.durationBeats), [16, 8])
+    }
+
+    func testLyricsWithoutChordsHaveAScrollPositionWithoutInventingAChord() {
+        let chart = ChordChartParser.parse("[C]first\nwords without chords\n[G]third", fallbackTitle: "Lyric gap")
+        let timeline = ChordTimelineBuilder.build(chart: chart)
+        XCTAssertNil(timeline.event(atBeat: 5))
+        XCTAssertEqual(timeline.line(atBeat: 5)?.lineIndex, 1)
+        XCTAssertEqual(timeline.line(atBeat: 9)?.lineIndex, 2)
+        XCTAssertEqual(timeline.line(atBeat: timeline.totalBeats)?.lineIndex, 2)
+    }
+
+    func testExplicitEmptyBarsAreNotCollapsed() {
+        let chart = ChordChartParser.parse("[C]intro││││\nrest ││", fallbackTitle: "Rests")
+        let timeline = ChordTimelineBuilder.build(chart: chart)
+        XCTAssertEqual(timeline.lineTimings.map(\.durationBeats), [16, 8])
+        XCTAssertEqual(timeline.totalBeats, 24)
+    }
+
+    func testTempoChangesIntegrateDurationAndInversePosition() {
+        let chart = ChordChartParser.parse("\n{tempo:120}\n[C]first\n{tempo:60}\nwords\n{tempo:240}\n[G]third", fallbackTitle: "Variable tempo")
+        let timeline = ChordTimelineBuilder.build(chart: chart)
+        XCTAssertEqual(timeline.tempoChanges.map(\.startBeat), [4, 8])
+        XCTAssertEqual(timeline.seconds(forBeat: 12, bpm: 120), 7, accuracy: 0.001)
+        XCTAssertEqual(timeline.beat(forSeconds: 5, bpm: 120), 7, accuracy: 0.001)
+        XCTAssertEqual(timeline.seconds(forBeat: 12, bpm: 60), 14, accuracy: 0.001)
+        for beat in stride(from: 0.0, through: 12, by: 0.5) {
+            XCTAssertEqual(timeline.beat(forSeconds: timeline.seconds(forBeat: beat, bpm: 120), bpm: 120), beat, accuracy: 0.001)
+        }
+    }
+
+    func testSideNotesDoNotConsumeMusicalTime() {
+        let chart = ChordChartParser.parse("※別バージョンは関連ページ\n[C]first", fallbackTitle: "Note")
+        XCTAssertEqual(chart.lines[0].kind, .comment)
+        XCTAssertEqual(ChordTimelineBuilder.build(chart: chart).events.first?.startBeat, 0)
+    }
+
     func testParsesMetadataAndChordPositions() {
         let chart =
             ChordChartParser.parse(

@@ -4,6 +4,7 @@ import GuitarToolsCore
 struct ChordWikiSearchResult:
     Identifiable,
     Hashable,
+    Codable,
     Sendable {
 
     let title: String

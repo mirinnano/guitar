@@ -121,6 +121,54 @@ final class AudioInputModelRegressionTests: XCTestCase {
         model.stop()
     }
 
+    func testToggleCancelsMissingSelectedDeviceWaitAndReconnectDoesNotStartCapture() {
+        let catalog = InputRegressionCatalog(devices: [mac], defaultID: mac.id)
+        let permission = InputRegressionPermission(status: .authorized)
+        let capture = InputRegressionCapture()
+        var creations = 0
+        let model = AudioInputModel(catalog: catalog, permission: permission, captureFactory: { creations += 1; return capture })
+        model.configureInput(uid: ur12.uid, channel: 1)
+        let defaultReads = catalog.defaultReads
+        XCTAssertFalse(model.isStartRequested)
+
+        model.toggle()
+        XCTAssertTrue(model.isStartRequested)
+        XCTAssertFalse(model.isRunning)
+        XCTAssertTrue(model.selectedDeviceUnavailable)
+        XCTAssertEqual(creations, 0)
+
+        model.toggle()
+        XCTAssertFalse(model.isStartRequested)
+        XCTAssertFalse(model.isRunning)
+        XCTAssertFalse(model.inputHealthMessage?.contains("再接続を待ち") == true)
+        catalog.onDevicesChanged?() // Still missing: refreshing must not rearm or claim to wait.
+        XCTAssertFalse(model.isStartRequested)
+        XCTAssertFalse(model.inputHealthMessage?.contains("再接続を待ち") == true)
+        catalog.devices.append(reconnectedUR12())
+        catalog.onDevicesChanged?()
+        model.refreshInputDevices()
+        model.selectInputChannel(0)
+        model.selectInputChannel(1)
+        XCTAssertFalse(model.isStartRequested)
+        XCTAssertFalse(model.isRunning)
+        XCTAssertTrue(capture.calls.isEmpty)
+        XCTAssertEqual(creations, 0)
+        XCTAssertEqual(permission.requests, 0)
+        XCTAssertEqual(model.selectedDeviceUID, ur12.uid)
+        XCTAssertEqual(model.selectedChannel, 1)
+        XCTAssertEqual(catalog.defaultReads, defaultReads)
+
+        model.toggle() // Only a fresh user request may start the reconnected route.
+        XCTAssertTrue(model.isStartRequested)
+        XCTAssertTrue(model.isRunning)
+        XCTAssertEqual(capture.calls.map(\.id), [99])
+        XCTAssertEqual(capture.calls.map(\.channel), [1])
+        XCTAssertEqual(creations, 1)
+        model.toggle()
+        XCTAssertFalse(model.isStartRequested)
+        XCTAssertFalse(model.isRunning)
+    }
+
     func testDisconnectStopsRetainsCh2AndReconnectRearmsOnlyUntilUserStops() {
         let (model, catalog, capture, _) = fixture()
         model.configureInput(uid: ur12.uid, channel: 1)
@@ -140,11 +188,16 @@ final class AudioInputModelRegressionTests: XCTestCase {
         XCTAssertTrue(model.isRunning)
         XCTAssertEqual(capture.calls.map(\.id), [51, 99])
         XCTAssertEqual(capture.calls.map(\.channel), [1, 1])
+        XCTAssertTrue(model.isStartRequested)
         catalog.devices = [mac]
         catalog.onDevicesChanged?()
-        model.stop()
+        XCTAssertTrue(model.isStartRequested)
+        XCTAssertFalse(model.isRunning)
+        model.toggle()
+        XCTAssertFalse(model.isStartRequested)
         catalog.devices.append(ur12)
         catalog.onDevicesChanged?()
+        XCTAssertFalse(model.isStartRequested)
         XCTAssertFalse(model.isRunning)
         XCTAssertEqual(capture.calls.count, 2)
         XCTAssertEqual(model.selectedChannel, 1)
@@ -253,7 +306,51 @@ final class AudioInputModelRegressionTests: XCTestCase {
         XCTAssertEqual(permission.requests, 0)
         XCTAssertFalse(model.isRunning)
         XCTAssertTrue(model.permissionDenied)
+        XCTAssertFalse(model.isStartRequested)
         XCTAssertTrue(model.errorMessage?.contains("許可されていません") == true)
+    }
+
+    func testToggleCancelsPendingPermissionAndLateGrantCannotStartCapture() async {
+        let catalog = InputRegressionCatalog(devices: [mac, ur12], defaultID: mac.id)
+        let permission = InputRegressionPermission(status: .notDetermined)
+        let capture = InputRegressionCapture()
+        var creations = 0
+        let model = AudioInputModel(catalog: catalog, permission: permission, captureFactory: { creations += 1; return capture })
+        model.configureInput(uid: ur12.uid, channel: 1)
+        var requests: [Bool] = []
+        let subscription = model.$isStartRequested.sink { requests.append($0) }
+
+        model.toggle()
+        XCTAssertTrue(model.isStartRequested)
+        XCTAssertFalse(model.isRunning)
+        XCTAssertEqual(permission.requests, 1)
+        let lateGrant = permission.completion
+        model.toggle()
+        XCTAssertFalse(model.isStartRequested)
+        XCTAssertFalse(model.isRunning)
+        permission.authorizationStatus = .authorized
+        lateGrant?(true)
+        catalog.onDevicesChanged?()
+        model.selectInputChannel(0)
+        model.selectInputChannel(1)
+        await drainCallbacks()
+        XCTAssertFalse(model.isStartRequested)
+        XCTAssertFalse(model.isRunning)
+        XCTAssertTrue(capture.calls.isEmpty)
+        XCTAssertEqual(creations, 0)
+        XCTAssertEqual(permission.requests, 1)
+
+        model.toggle() // Permission is now granted, but still needs a fresh user start.
+        XCTAssertTrue(model.isStartRequested)
+        XCTAssertTrue(model.isRunning)
+        XCTAssertEqual(capture.calls.map(\.id), [51])
+        XCTAssertEqual(capture.calls.map(\.channel), [1])
+        XCTAssertEqual(creations, 1)
+        model.toggle()
+        XCTAssertFalse(model.isStartRequested)
+        XCTAssertFalse(model.isRunning)
+        XCTAssertEqual(requests, [false, true, false, true, false])
+        subscription.cancel()
     }
 
     func testLatePermissionGrantAfterStopCannotStartCapture() async {
@@ -333,7 +430,8 @@ final class AudioInputModelRegressionTests: XCTestCase {
         let oldError = capture.onError
         let oldRouteChange = capture.onConfigurationChanged
         oldFrame?(frame(count: 2_048, value: 1)) // Worker/main updates may now be queued.
-        model.stop()
+        model.toggle()
+        XCTAssertFalse(model.isStartRequested)
         let deliveredBeforeNewRoute = recorder.records.count
         oldFrame?(frame(count: 512, value: 1))
         oldError?(InputCaptureError.deviceMismatch)
@@ -354,8 +452,14 @@ final class AudioInputModelRegressionTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
         XCTAssertEqual(capture.calls.count, 2)
         XCTAssertEqual(recorder.records.count, deliveredBeforeNewRoute + 1)
-        model.stop()
+        let stoppedFrame = capture.onFrame
+        model.toggle()
+        stoppedFrame?(frame(count: 512, value: 1))
         await drainCallbacks()
+        XCTAssertFalse(model.isStartRequested)
+        XCTAssertFalse(model.isRunning)
+        XCTAssertEqual(capture.calls.count, 2, "A late PCM frame must not restart cancelled input")
+        XCTAssertEqual(recorder.records.count, deliveredBeforeNewRoute + 1)
         XCTAssertEqual(model.receivedFrameCount, 0)
         XCTAssertEqual(model.channelLevelsDBFS, [-120, -120])
         XCTAssertEqual(model.levelDBFS, -120)

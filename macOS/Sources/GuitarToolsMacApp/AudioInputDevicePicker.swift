@@ -15,7 +15,8 @@ struct AudioInputDevicePicker: View {
             )) {
                 Text("システムのデフォルト").tag(Optional<String>.none)
                 if audio.selectedDeviceUnavailable, let uid = audio.selectedDeviceUID {
-                    Text("未接続の入力（再接続を待機）").tag(Optional(uid))
+                    Text(audio.isStartRequested ? "未接続の入力（再接続を待機）" : "未接続の入力")
+                        .tag(Optional(uid))
                 }
                 ForEach(audio.inputDevices) { device in
                     Text(device.name).tag(Optional(device.uid))
@@ -50,6 +51,15 @@ struct AudioInputDevicePicker: View {
                         audio.configureInput(uid: audio.selectedDeviceUID, channel: 1)
                     }
                     .buttonStyle(.bordered).controlSize(.small)
+                }
+            }
+            if audio.isStartRequested && !audio.isRunning {
+                HStack {
+                    Label("入力開始を待機中", systemImage: "hourglass")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Button("開始をキャンセル", systemImage: "xmark.circle") { audio.toggle() }
+                        .buttonStyle(.bordered).controlSize(.small)
                 }
             }
             HStack(spacing: 8) {

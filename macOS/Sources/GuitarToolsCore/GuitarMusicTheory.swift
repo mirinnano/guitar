@@ -82,20 +82,17 @@ public enum GuitarNote:
         ) - 1
     }
 
+    /// Invalid inputs return MIDI 0; optional pitch/target APIs reject them.
     public static func nearestMIDI(
         frequencyHz: Double,
         a4Hz: Double = 440
     ) -> Int {
-        Int(
-            (
-                69 +
-                12 *
-                log2(
-                    frequencyHz /
-                    a4Hz
-                )
-            ).rounded()
-        )
+        guard frequencyHz.isFinite, frequencyHz > 0,
+              a4Hz.isFinite, a4Hz > 0 else { return 0 }
+        // Subtract logarithms to avoid overflow/underflow in frequencyHz / a4Hz.
+        let midi = (69 + 12 * (log2(frequencyHz) - log2(a4Hz))).rounded()
+        guard midi.isFinite, midi >= Double(Int.min), midi < Double(Int.max) else { return 0 }
+        return Int(midi)
     }
 
     public static func frequency(
@@ -105,7 +102,7 @@ public enum GuitarNote:
         a4Hz *
         pow(
             2,
-            Double(midi - 69) /
+            (Double(midi) - 69) /
             12
         )
     }
@@ -144,7 +141,9 @@ public struct GuitarPitchReading:
         a4Hz: Double = 440
     ) -> GuitarPitchReading? {
         guard
+            frequencyHz.isFinite,
             frequencyHz > 0,
+            a4Hz.isFinite,
             a4Hz > 0
         else {
             return nil
@@ -163,12 +162,9 @@ public struct GuitarPitchReading:
                 a4Hz: a4Hz
             )
 
-        let cents =
-            1_200 *
-            log2(
-                frequencyHz /
-                target
-            )
+        guard target.isFinite, target > 0 else { return nil }
+        let cents = 1_200 * (log2(frequencyHz) - log2(target))
+        guard cents.isFinite else { return nil }
 
         return GuitarPitchReading(
             frequencyHz:
@@ -288,7 +284,9 @@ public struct GuitarTuning:
         a4Hz: Double = 440
     ) -> GuitarTuningTarget? {
         guard
+            frequencyHz.isFinite,
             frequencyHz > 0,
+            a4Hz.isFinite,
             a4Hz > 0,
             let string =
                 strings.first(
@@ -308,16 +306,14 @@ public struct GuitarTuning:
                 a4Hz: a4Hz
             )
 
+        guard target.isFinite, target > 0 else { return nil }
+        let cents = 1_200 * (log2(frequencyHz) - log2(target))
+        guard cents.isFinite else { return nil }
+
         return GuitarTuningTarget(
             string: string,
-            targetFrequencyHz:
-                target,
-            centsFromTarget:
-                1_200 *
-                log2(
-                    frequencyHz /
-                    target
-                )
+            targetFrequencyHz: target,
+            centsFromTarget: cents
         )
     }
 

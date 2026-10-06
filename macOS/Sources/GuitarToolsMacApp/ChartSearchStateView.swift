@@ -6,11 +6,14 @@ struct ChartSearchStateView: View {
     let submittedQuery: String?
     let error: String?
     let onSearch: () -> Void
+    var recentCharts: [ChordWikiSearchResult] = []
+    var onOpenRecent: ((ChordWikiSearchResult) -> Void)?
+    var onRemoveRecent: ((ChordWikiSearchResult) -> Void)?
 
     private var title: String {
         if error != nil { return "譜面を取得できませんでした" }
         if submittedQuery != nil { return "譜面が見つかりませんでした" }
-        return "好きな曲を探しましょう"
+        return "譜面"
     }
 
     var body: some View {
@@ -31,15 +34,34 @@ struct ChartSearchStateView: View {
                     if let error {
                         Text(error)
                             .foregroundStyle(.secondary)
-                        Text("通信状況を確認して、もう一度検索してください。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     } else if let submittedQuery {
-                        Text("「\(submittedQuery)」の検索結果は0件です。曲名を短くするか、アーティスト名で探してみてください。")
+                        Text("「\(submittedQuery)」の検索結果は0件です。")
                             .foregroundStyle(.secondary)
-                    } else {
-                        Text("まずは知っている曲から。検索して曲を選ぶと、譜面とコードの押さえ方を一緒に見られます。")
-                            .foregroundStyle(.secondary)
+                    }
+                }
+                if !recentCharts.isEmpty, let onOpenRecent {
+                    MacSection("最近開いた譜面") {
+                        ForEach(recentCharts) { result in
+                            Button { onOpenRecent(result) } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "music.note").foregroundStyle(.secondary)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(result.title).foregroundStyle(.primary)
+                                        Text(result.subtitle).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                                }
+                                .padding(.vertical, 8)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                if let onRemoveRecent {
+                                    Button("履歴から削除", role: .destructive) { onRemoveRecent(result) }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -70,8 +92,6 @@ struct ChartLoadErrorBanner: View {
             Label("譜面を開けませんでした", systemImage: "exclamationmark.triangle")
                 .fontWeight(.semibold)
             Text(message)
-            Text("曲名をもう一度選ぶか、別の曲を検索してください。")
-                .foregroundStyle(.secondary)
         }
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)

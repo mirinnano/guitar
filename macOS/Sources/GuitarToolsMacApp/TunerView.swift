@@ -40,20 +40,10 @@ struct TunerView:
                 alignment: .leading,
                 spacing: MacLayout.sectionSpacing
             ) {
-                MacPageHeader("チューナー", subtitle: "弦を1本ずつ鳴らして、中央に合わせましょう。") {
+                MacPageHeader("チューナー") {
                     tuningStatus
                 }
 
-                routingSection
-
-                if !audio.isRunning {
-                    MacSection("接続できたら、1本ずつ", subtitle: "最初は6弦の低いEから") {
-                        Text("ギターをHI-Z入力につなぎ、入力チャンネルを選んでください。開始時にマイクの許可が必要です。アコースティックギターはMacのマイクも選べます。")
-                            .foregroundStyle(.secondary)
-                        Button("チューニングを開始", systemImage: "waveform", action: toggleInput)
-                            .buttonStyle(.borderedProminent)
-                    }
-                }
                 if let error = audio.errorMessage {
                     Text(error)
                         .font(.callout)
@@ -61,8 +51,15 @@ struct TunerView:
                 }
 
                 tunerHero
-
                 tuningSection
+                routingSection
+
+                if !audio.isRunning {
+                    HStack {
+                        Button(audio.isStartRequested ? "開始をキャンセル" : "入力開始", systemImage: audio.isStartRequested ? "stop.fill" : "waveform", action: toggleInput)
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
             }
             .padding(MacLayout.pagePadding)
             .macPageWidth(1_080)
@@ -77,18 +74,18 @@ struct TunerView:
             ) {
                 Button(action: toggleInput) {
                     Label(
-                        audio.isRunning
-                        ? "入力停止"
+                        audio.isStartRequested
+                        ? (audio.isRunning ? "入力停止" : "開始をキャンセル")
                         : "入力開始",
                         systemImage:
-                            audio.isRunning
+                            audio.isStartRequested
                             ? "waveform.slash"
                             : "waveform"
                     )
                 }
                 .help(
-                    audio.isRunning
-                    ? "オーディオ入力を停止"
+                    audio.isStartRequested
+                    ? "オーディオ入力を停止・開始予約をキャンセル"
                     : "オーディオ入力を開始"
                 )
 
@@ -113,20 +110,11 @@ struct TunerView:
             inspectorPresented.toggle()
         }
         .onAppear {
-            if audio.isRunning { model.start() }
+            model.start(requestInput: false)
         }
         .onDisappear {
             model.stop()
             output.stopReference()
-        }
-        .onChange(
-            of: model.a4Hz
-        ) {
-            _ in
-
-            model.setLockedString(
-                model.lockedStringNumber
-            )
         }
     }
 
@@ -140,7 +128,7 @@ struct TunerView:
 
         if !audio.isRunning {
             MacStatusPill(
-                text: "入力停止中",
+                text: audio.isStartRequested ? "入力開始待ち" : "入力停止中",
                 systemImage:
                     "waveform.slash",
                 role: .neutral
@@ -188,12 +176,17 @@ struct TunerView:
                 MacAudioLevelMeter(levelDBFS: audio.levelDBFS, clipping: audio.clipping)
                     .frame(maxWidth: 360)
 
-                if let target = model.target {
+                if !audio.isRunning {
+                    Button(audio.isStartRequested ? "開始をキャンセル" : "入力開始", systemImage: audio.isStartRequested ? "stop.fill" : "waveform", action: toggleInput)
+                        .buttonStyle(.borderedProminent)
+                }
+
+                if let string = model.targetString, let frequency = model.targetFrequencyHz {
                     Spacer(minLength: 12)
                     MacMetric(
                         "目標の音",
-                        value: target.string.label,
-                        detail: String(format: "%.2f Hz", target.targetFrequencyHz),
+                        value: string.label,
+                        detail: String(format: "%.2f Hz", frequency),
                         systemImage: "scope"
                     )
                 }
@@ -579,7 +572,7 @@ struct TunerView:
                 ) {
                     HStack {
                         Text(
-                            "入力感度"
+                            "検出感度"
                         )
                         .foregroundStyle(
                             .secondary
@@ -604,6 +597,9 @@ struct TunerView:
                             $model.sensitivity,
                         in: 0...1
                     )
+                    Text("小さい音を検出しやすくする設定です。入力音量は変わりません。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 MacMetric(
@@ -658,13 +654,8 @@ struct TunerView:
 
     private var targetText:
         String {
-        guard let target =
-            model.target
-        else {
-            return "対象の弦 —"
-        }
-
-        return "対象の弦 \(target.string.label)"
+        guard let string = model.targetString else { return "対象の弦 —" }
+        return "対象の弦 \(string.label)"
     }
 
     private var centsText:
@@ -684,9 +675,8 @@ struct TunerView:
     }
 
     private func toggleInput() {
-        model.stop()
-        if audio.isRunning { audio.stop() }
-        else { model.start() }
+        model.start(requestInput: false)
+        audio.toggle()
     }
 
     private var isInTune:

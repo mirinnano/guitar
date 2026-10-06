@@ -26,13 +26,19 @@ struct ChordWikiViewerView:
         false
 
     @State
-    private var chordSummaryExpanded = false
+    private var inspectorTab = InspectorTab.chords
 
     @State
     private var musicURL = ""
 
     @State private var musicPanelPresented = false
     @State private var coachPresented = false
+    @AppStorage("guitar-tools.chart.show-fingerings") private var showFingerings = false
+    @AppStorage("guitar-tools.chart.font-size") private var chartFontSize = 20
+
+    private enum InspectorTab: Hashable {
+        case chords, settings
+    }
 
     private var playbackActive: Bool {
         model.countInRemaining != nil || (model.youtubeVideoID != nil ? model.youtubePlaying : model.isPlaying)
@@ -83,54 +89,41 @@ struct ChordWikiViewerView:
                     placement:
                         .primaryAction
                 ) {
-                    Button(action: togglePlayback) {
-                        Label(
-                            playbackActive
-                            ? "一時停止"
-                            : "再生",
-                            systemImage:
-                                playbackActive
-                                ? "pause.fill"
-                                : "play.fill"
-                        )
+                    Menu {
+                        Button("小さく") { chartFontSize = max(14, chartFontSize - 2) }
+                            .disabled(chartFontSize <= 14)
+                        Button("大きく") { chartFontSize = min(28, chartFontSize + 2) }
+                            .disabled(chartFontSize >= 28)
+                        Divider()
+                        Button("標準（20）") { chartFontSize = 20 }
+                    } label: {
+                        Label("文字サイズ", systemImage: "textformat.size")
                     }
+                    .accessibilityLabel("文字サイズ")
+                    .help("譜面の文字サイズを変更")
 
                     Button {
-                        model
-                            .setMetronome(
-                                !model
-                                    .metronomeEnabled
-                            )
+                        if inspectorPresented && inspectorTab == .chords {
+                            inspectorPresented = false
+                        } else {
+                            inspectorTab = .chords
+                            inspectorPresented = true
+                        }
                     } label: {
-                        Label(
-                            "メトロノーム",
-                            systemImage:
-                                model
-                                    .metronomeEnabled
-                                ? "metronome.fill"
-                                : "metronome"
-                        )
+                        Label("押さえ方", systemImage: "square.grid.2x2")
                     }
+                    .help("使用コード・押さえ方のサイドパネルを表示 / 非表示")
 
                     Button {
-                        model.autoScroll
-                            .toggle()
+                        if inspectorPresented && inspectorTab == .settings {
+                            inspectorPresented = false
+                        } else {
+                            inspectorTab = .settings
+                            inspectorPresented = true
+                        }
                     } label: {
                         Label(
-                            "自動スクロール",
-                            systemImage:
-                                model.autoScroll
-                                ? "arrow.down.to.line.compact"
-                                : "arrow.down.to.line"
-                        )
-                    }
-
-                    Button {
-                        inspectorPresented
-                            .toggle()
-                    } label: {
-                        Label(
-                            "インスペクタ",
+                            "表示と再生の設定",
                             systemImage:
                                 "sidebar.trailing"
                         )
@@ -175,11 +168,27 @@ struct ChordWikiViewerView:
                     )
             }
         }
+        .onChange(of: model.chart?.sourceTitle) { title in
+            inspectorPresented = title != nil
+            if title != nil { inspectorTab = .chords }
+        }
         .onChange(of: model.loopRestartRevision) { _ in
             guard model.loopEnabled, model.youtubeSyncEnabled,
                   let range = model.practiceLoop else { return }
             youtubeController.seek(toMilliseconds: model.videoPosition(forBeat: range.startBeat))
             youtubeController.play()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .practiceTogglePlayback)) { _ in
+            guard model.chart != nil else { return }
+            togglePlayback()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .practiceReset)) { _ in
+            guard model.chart != nil else { return }
+            seekPlayback(to: model.loopEnabled ? (model.practiceLoop?.startBeat ?? 0) : 0)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .practiceToggleInspector)) { _ in
+            guard model.chart != nil else { return }
+            inspectorPresented.toggle()
         }
         .onDisappear {
             youtubeController.pause()
@@ -203,7 +212,10 @@ struct ChordWikiViewerView:
                 query: $model.query,
                 submittedQuery: model.lastSearchQuery,
                 error: model.errorMessage,
-                onSearch: model.search
+                onSearch: model.search,
+                recentCharts: model.recentCharts,
+                onOpenRecent: model.open,
+                onRemoveRecent: model.removeRecentChart
             )
         } else {
             VStack(spacing: 0) {
@@ -264,9 +276,10 @@ struct ChordWikiViewerView:
 
             Divider()
 
-            currentPositionBar
-
-            Divider()
+            if model.countInRemaining != nil || model.calibrationMode {
+                currentPositionBar
+                Divider()
+            }
 
             ScrollViewReader {
                 proxy in
@@ -274,16 +287,8 @@ struct ChordWikiViewerView:
                 ScrollView {
                     LazyVStack(
                         alignment: .leading,
-                        spacing: 7
+                        spacing: 14
                     ) {
-                        if !usedChordSymbols.isEmpty {
-                            usedChordShapes
-                                .padding(
-                                    .bottom,
-                                    16
-                                )
-                        }
-
                         ForEach(
                             Array(
                                 chart.lines
@@ -305,6 +310,8 @@ struct ChordWikiViewerView:
                                 calibrationMode:
                                     model
                                         .calibrationMode,
+                                showFingerings: showFingerings,
+                                fontSize: CGFloat(min(max(chartFontSize, 14), 28)),
                                 events:
                                     model
                                         .timeline?
@@ -322,46 +329,29 @@ struct ChordWikiViewerView:
                             .id(index)
                         }
                     }
-                    .padding(24)
+                    .frame(maxWidth: 1_100, alignment: .leading)
+                    .padding(28)
                     .frame(
                         maxWidth:
                             .infinity,
                         alignment:
-                            .leading
+                            .center
                     )
                 }
-                .task {
-                    guard model.autoScroll, let line = model.currentEvent?.lineIndex else { return }
-                    try? await Task.sleep(for: .milliseconds(100))
+                .task(id: scrollTrackingID) {
+                    guard model.autoScroll, !model.calibrationMode,
+                          let line = model.currentLine else { return }
+                    if !model.isPlaying && model.scrollRevision == 0 { return }
+                    try? await Task.sleep(for: .milliseconds(50))
                     guard !Task.isCancelled else { return }
-                    proxy.scrollTo(line, anchor: .center)
-                }
-                .onChange(
-                    of:
-                        model
-                            .currentEvent?
-                            .lineIndex
-                ) {
-                    line in
-
-                    guard
-                        model.autoScroll,
-                        !model
-                            .calibrationMode,
-                        let line
-                    else {
-                        return
-                    }
-
-                    withAnimation(
-                        .easeOut(
-                            duration: 0.16
-                        )
-                    ) {
-                        proxy.scrollTo(
-                            line,
-                            anchor: .center
-                        )
+                    proxy.scrollTo(line.lineIndex, anchor: .center)
+                    guard model.isPlaying,
+                          let next = model.timeline?.lineTimings.first(where: { $0.startBeat > line.startBeat })
+                    else { return }
+                    let duration = model.secondsUntilNextLine()
+                    guard duration > 0 else { return }
+                    withAnimation(.linear(duration: duration)) {
+                        proxy.scrollTo(next.lineIndex, anchor: .center)
                     }
                 }
             }
@@ -391,6 +381,13 @@ struct ChordWikiViewerView:
                 if small && !playbackActive { setMusicPanelPresented(false) }
             }
         }
+    }
+
+    private var scrollTrackingID: String {
+        [String(model.currentLine?.lineIndex ?? -1), String(model.scrollRevision),
+         String(model.isPlaying), String(model.autoScroll), String(model.calibrationMode),
+         String(model.youtubeSyncEnabled ? model.youtubePlaybackRate : model.internalPlaybackRate),
+         String(model.playbackBPM), String(showFingerings), String(chartFontSize)].joined(separator: ":")
     }
 
     private func header(
@@ -426,7 +423,7 @@ struct ChordWikiViewerView:
                 }
 
                 Text(
-                    "\(model.bpm) BPM"
+                    "\(Int(model.playbackBPM.rounded())) BPM"
                 )
 
                 Text(
@@ -452,128 +449,50 @@ struct ChordWikiViewerView:
             )
 
             ChartFingeringContext(chart: chart)
+
         }
-        .padding(
-            .horizontal,
-            22
-        )
+        .frame(maxWidth: 1_100, alignment: .leading)
+        .padding(.horizontal, 28)
+        .frame(maxWidth: .infinity, alignment: .center)
         .padding(
             .vertical,
             13
         )
     }
 
-    private var currentPositionBar:
-        some View {
-        HStack(
-            spacing: 16
-        ) {
+    private var currentPositionBar: some View {
+        HStack {
             if let remaining = model.countInRemaining {
-                MacStatusPill(text: "あと\(remaining)拍で開始", systemImage: "metronome", role: .neutral)
+                Text("カウントイン \(remaining)")
+                    .monospacedDigit()
             }
-            LabeledContent(
-                "現在"
-            ) {
-                Text(
-                    model
-                        .currentEvent?
-                        .symbol
-                    ?? "—"
-                )
-                .fontWeight(
-                    .semibold
-                )
-            }
-
-            if let status =
-                model.syncStatus {
-                MacStatusPill(
-                    text:
-                        syncPrecisionText(
-                            status.precision
-                        ),
-                    systemImage:
-                        status.anchorCount >= 3
-                        ? "point.3.connected.trianglepath.dotted"
-                        : "scope",
-                    role:
-                        status.anchorCount >= 2
-                        ? .success
-                        : .neutral
-                )
-
-                if status.anchorCount >= 2 {
-                    Text(
-                        String(
-                            format:
-                                "局所 %.1f BPM",
-                            status.localBPM
-                        )
-                    )
-                    .font(
-                        .caption
-                            .monospacedDigit()
-                    )
-                    .foregroundStyle(
-                        .secondary
-                    )
-                }
-            }
-
             Spacer()
-
             if model.calibrationMode {
-                MacStatusPill(
-                    text:
-                        "コードをクリックして同期アンカーを追加",
-                    systemImage:
-                        "scope",
-                    role: .warning
-                )
+                Text("コードをクリックして同期アンカーを追加")
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(
-            .horizontal,
-            22
-        )
-        .padding(
-            .vertical,
-            9
-        )
+        .font(.caption)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 9)
     }
 
     private var transport:
         some View {
         VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                Button(action: togglePlayback) {
-                    Label(playbackActive ? "一時停止" : "再生", systemImage: playbackActive ? "pause.fill" : "play.fill")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    playbackButtons
+                    Spacer(minLength: 12)
+                    HStack(spacing: 12) { practiceControls }
                 }
-                .buttonStyle(.borderedProminent)
-                Button(musicPanelPresented ? "音楽を閉じて停止" : "音楽", systemImage: "music.note") {
-                    setMusicPanelPresented(!musicPanelPresented)
-                }
-                .help("音楽パネルを閉じると動画再生も停止します。")
-                Button("30秒の切替練習", systemImage: "arrow.left.arrow.right") {
-                    youtubeController.pause()
-                    model.stop()
-                    coachPresented = true
-                }
-                .help("この曲のコード切替を取り出し、残せる指を確認して短く反復します。マイク不要。")
-                if let chart = model.chart, let onPractice {
-                    Button("演奏判定", systemImage: "guitars") {
-                        let request = ChartPracticeRequest(chart: chart, beat: model.currentBeat, bpm: model.bpm)
-                        youtubeController.pause()
-                        model.stop()
-                        onPractice(request)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) { playbackButtons }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) { practiceControls }
+                        VStack(alignment: .leading, spacing: 6) { practiceControls }
                     }
                 }
-                Spacer(minLength: 0)
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) { practiceControls }
-                VStack(alignment: .leading, spacing: 6) { practiceControls }
             }
             Slider(
                 value:
@@ -688,10 +607,21 @@ struct ChordWikiViewerView:
         .macGlassSurface()
     }
 
+    private var playbackButtons: some View {
+        Group {
+            Button(action: togglePlayback) {
+                Label(playbackActive ? "一時停止" : "再生", systemImage: playbackActive ? "pause.fill" : "play.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            Button(musicPanelPresented ? "音楽を閉じて停止" : "音楽", systemImage: "music.note") {
+                setMusicPanelPresented(!musicPanelPresented)
+            }
+            .help("音楽パネルを閉じると動画再生も停止します。")
+        }
+    }
+
     private var practiceControls: some View {
         Group {
-            Toggle("カウントイン", isOn: $model.countInEnabled)
-                .help("再生前に1小節の拍を数えます。")
             Picker("速度", selection: Binding(
                 get: { model.youtubeVideoID != nil ? model.youtubePlaybackRate : model.internalPlaybackRate },
                 set: { rate in
@@ -764,7 +694,7 @@ struct ChordWikiViewerView:
 
     private func musicPanel(_ chart: ChordChart) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("音楽と一緒に練習", systemImage: "music.note")
+            Label("音楽", systemImage: "music.note")
                 .font(.headline)
 
             if let videoID = model.youtubeVideoID {
@@ -800,9 +730,10 @@ struct ChordWikiViewerView:
                     set: model.setYouTubeSync
                 ))
 
-                Text("譜面の進む位置はテンポからの推定です。曲の前奏や間奏でずれることがあります。合わないときは右上の設定で位置を調整してください。")
+                Text("譜面位置は推定です。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .help("前奏や間奏で位置がずれる場合は、表示と再生の設定で開始オフセットや同期アンカーを調整できます。")
 
                 Link("YouTubeで開く", destination: URL(string: "https://www.youtube.com/watch?v=\(videoID)")!)
             } else {
@@ -843,11 +774,35 @@ struct ChordWikiViewerView:
         model.attachMusicURL(musicURL)
     }
 
+    private func inspector(_ chart: ChordChart) -> some View {
+        VStack(spacing: 0) {
+            Picker("サイドパネル", selection: $inspectorTab) {
+                Text("コード").tag(InspectorTab.chords)
+                Text("設定").tag(InspectorTab.settings)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(12)
+            Divider()
+            switch inspectorTab {
+            case .chords:
+                ChartChordSummaryView(chart: chart)
+                    .id(chart.sourceURL?.absoluteString ?? chart.sourceTitle)
+            case .settings:
+                inspectorSettings(chart)
+            }
+        }
+    }
+
     @ViewBuilder
-    private func inspector(
+    private func inspectorSettings(
         _ chart: ChordChart
     ) -> some View {
         Form {
+            Section("表示") {
+                Toggle("各コードの上に押さえ方を表示", isOn: $showFingerings)
+                Stepper("文字サイズ \(chartFontSize)", value: $chartFontSize, in: 14...28, step: 2)
+            }
             if model.youtubeVideoID != nil {
                 Section(
                     "YouTube"
@@ -920,6 +875,12 @@ struct ChordWikiViewerView:
                 Section(
                     "同期アンカー"
                 ) {
+                    if let status = model.syncStatus {
+                        LabeledContent("同期方式", value: syncPrecisionText(status.precision))
+                        if status.anchorCount >= 2 {
+                            LabeledContent("局所BPM", value: String(format: "%.1f", status.localBPM))
+                        }
+                    }
                     Toggle(
                         "アンカー調整",
                         isOn:
@@ -1042,6 +1003,17 @@ struct ChordWikiViewerView:
             Section(
                 "再生"
             ) {
+                Toggle("カウントイン", isOn: $model.countInEnabled)
+                Picker("小節線のない行", selection: Binding(
+                    get: { model.unmarkedBarsPerLine },
+                    set: model.setUnmarkedBarsPerLine
+                )) {
+                    Text("自動（\(ChordTimelineBuilder.inferredUnmarkedBars(chart: chart))小節）").tag(Optional<Int>.none)
+                    ForEach(1...16, id: \.self) { count in
+                        Text("\(count)小節").tag(Optional(count))
+                    }
+                }
+                .help("小節線のない行の長さは推定です。この設定で行あたりの小節数を指定できます。")
                 LabeledContent(
                     "BPM"
                 ) {
@@ -1077,52 +1049,32 @@ struct ChordWikiViewerView:
                             .autoScroll
                 )
             }
-        }
-        .formStyle(.grouped)
-    }
-
-    private var usedChordSymbols: [String] {
-        guard let chart = model.chart else { return [] }
-        var seen = Set<String>()
-        return chart.lines.flatMap(\.segments).compactMap(\.chord).compactMap { symbol in
-            let value = ChordFingeringPresentation(symbol: symbol)
-            guard value.availability != .noChord, seen.insert(value.symbol).inserted else { return nil }
-            return value.symbol
-        }
-    }
-
-    private var usedChordShapes:
-        some View {
-        VStack(alignment: .leading, spacing: 10) {
-            DisclosureGroup(isExpanded: $chordSummaryExpanded) {
-                ScrollView(.horizontal) {
-                    HStack(alignment: .top, spacing: 10) {
-                        ForEach(usedChordSymbols, id: \.self) { symbol in
-                            GroupBox {
-                                ChordFingeringView(symbol: symbol, compact: true)
-                                .frame(width: 128)
-                                .padding(4)
-                            }
+            Section {
+                DisclosureGroup("その他のツール") {
+                    Button("コード切替", systemImage: "arrow.left.arrow.right") {
+                        youtubeController.pause()
+                        model.stop()
+                        coachPresented = true
+                    }
+                    if let onPractice {
+                        Button("演奏判定", systemImage: "scope") {
+                            let request = ChartPracticeRequest(chart: chart, beat: model.currentBeat, bpm: model.bpm)
+                            youtubeController.pause()
+                            model.stop()
+                            onPractice(request)
                         }
                     }
-                    .padding(.top, 8)
+                    if let onLearnChords, !learnableChordSymbols.isEmpty {
+                        Button("コード学習", systemImage: "brain") {
+                            model.stop()
+                            youtubeController.pause()
+                            onLearnChords(learnableChordSymbols, "\(chart.title)のコード")
+                        }
+                    }
                 }
-            } label: {
-                Text("使用コード・押さえ方一覧（\(usedChordSymbols.count)種類）")
-                    .font(.headline)
             }
-
-            if let onLearnChords, !learnableChordSymbols.isEmpty {
-                Button("この曲のコードを覚える", systemImage: "brain") {
-                    model.stop()
-                    youtubeController.pause()
-                    onLearnChords(learnableChordSymbols, "\(model.chart?.title ?? "この曲")のコード")
-                }
-                .buttonStyle(.bordered)
-                .help("音楽を止めて、この曲のコードを図なしで思い出す練習へ")
-            }
-            ChordFingerLegend()
         }
+        .formStyle(.grouped)
     }
 
     private var learnableChordSymbols: [String] {
@@ -1186,198 +1138,5 @@ struct ChordWikiViewerView:
                 "%.2f",
             beat
         )
-    }
-}
-
-private struct ViewerChartLine:
-    View {
-
-    let line: ChartLine
-    let lineIndex: Int
-    let activeEvent:
-        TimedChordEvent?
-    let anchors:
-        [ChordSyncAnchor]
-    let calibrationMode:
-        Bool
-    let events:
-        [TimedChordEvent]
-    let previousSymbols: [Int: String]
-    let onAnchor:
-        (TimedChordEvent) -> Void
-
-    var body: some View {
-        switch line.kind {
-        case .blank:
-            Spacer()
-                .frame(height: 8)
-
-        case .comment:
-            Text(
-                line.segments
-                    .map(\.text)
-                    .joined()
-            )
-            .font(.headline)
-            .foregroundStyle(
-                .secondary
-            )
-            .padding(
-                .vertical,
-                5
-            )
-
-        case .content:
-            ScrollView(
-                .horizontal,
-                showsIndicators: false
-            ) {
-                HStack(
-                    alignment: .top,
-                    spacing: 0
-                ) {
-                ForEach(
-                    Array(
-                        line.segments
-                            .enumerated()
-                    ),
-                    id: \.offset
-                ) {
-                    segmentIndex,
-                    segment in
-
-                    let event =
-                        events.first {
-                            $0.segmentIndex ==
-                            segmentIndex
-                        }
-
-                    let anchored =
-                        anchors.contains {
-                            $0.lineIndex ==
-                            lineIndex &&
-                            $0.segmentIndex ==
-                            segmentIndex
-                        }
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: 2
-                    ) {
-                        if let chord = segment.chord {
-                            InlineChordFingering(
-                                chord: chord, previousSymbol: previousSymbols[segmentIndex]
-                            )
-                        } else {
-                            Color.clear
-                                .frame(
-                                    width: 1,
-                                    height: InlineChordFingering.height
-                                )
-                        }
-
-                        if let chord =
-                            segment.chord {
-                            Button {
-                                if
-                                    calibrationMode,
-                                    let event {
-                                    onAnchor(
-                                        event
-                                    )
-                                }
-                            } label: {
-                                Text(chord)
-                                    .font(
-                                        .system(
-                                            .body,
-                                            design:
-                                                .monospaced
-                                        )
-                                    )
-                                    .fontWeight(
-                                        .semibold
-                                    )
-                                    .padding(
-                                        .horizontal,
-                                        5
-                                    )
-                                    .padding(
-                                        .vertical,
-                                        2
-                                    )
-                                    .background(
-                                        chordBackground(
-                                            segmentIndex:
-                                                segmentIndex,
-                                            anchored:
-                                                anchored
-                                        ),
-                                        in:
-                                            RoundedRectangle(
-                                                cornerRadius:
-                                                    5
-                                            )
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(
-                                calibrationMode &&
-                                event == nil
-                            )
-                        } else {
-                            Text(" ")
-                        }
-
-                        Text(
-                            segment.text
-                                .isEmpty
-                            ? " "
-                            : segment.text
-                        )
-                        .font(
-                            .system(
-                                .body,
-                                design:
-                                    .monospaced
-                            )
-                        )
-                        .fixedSize(
-                            horizontal: true,
-                            vertical: false
-                        )
-                    }
-                }
-                .padding(
-                    .vertical,
-                    2
-                )
-            }
-        }
-        }
-    }
-
-    private func chordBackground(
-        segmentIndex: Int,
-        anchored: Bool
-    ) -> Color {
-        if activeEvent?
-            .lineIndex ==
-            lineIndex &&
-            activeEvent?
-                .segmentIndex ==
-            segmentIndex {
-            return Color
-                .accentColor
-                .opacity(0.18)
-        }
-
-        if anchored {
-            return Color
-                .orange
-                .opacity(0.18)
-        }
-
-        return .clear
     }
 }

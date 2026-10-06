@@ -66,6 +66,7 @@ public struct ChordSyncMap:
     public let fallbackOffsetMs:
         Int64
     public let totalBeats: Double
+    public let tempoMap: ChordTempoMap?
 
     public init(
         anchors:
@@ -73,7 +74,8 @@ public struct ChordSyncMap:
         fallbackBPM: Int,
         fallbackOffsetMs:
             Int64,
-        totalBeats: Double
+        totalBeats: Double,
+        tempoMap: ChordTempoMap? = nil
     ) {
         self.anchors =
             anchors
@@ -103,6 +105,7 @@ public struct ChordSyncMap:
             fallbackOffsetMs
         self.totalBeats =
             totalBeats
+        self.tempoMap = tempoMap
     }
 
     public var precision:
@@ -133,30 +136,15 @@ public struct ChordSyncMap:
 
         switch anchors.count {
         case 0:
-            raw =
-                Double(
-                    forVideoPositionMs -
-                    fallbackOffsetMs
-                ) *
-                Double(
-                    fallbackBPM
-                ) /
-                60_000
+            raw = fallbackTempoMap.beat(forSeconds: Double(forVideoPositionMs - fallbackOffsetMs) / 1_000)
 
         case 1:
             let anchor =
                 anchors[0]
 
-            raw =
-                anchor.chartBeat +
-                Double(
-                    forVideoPositionMs -
-                    anchor.videoPositionMs
-                ) *
-                Double(
-                    fallbackBPM
-                ) /
-                60_000
+            raw = fallbackTempoMap.beat(forSeconds:
+                fallbackTempoMap.seconds(forBeat: anchor.chartBeat)
+                    + Double(forVideoPositionMs - anchor.videoPositionMs) / 1_000)
 
         default:
             raw =
@@ -185,39 +173,14 @@ public struct ChordSyncMap:
 
         switch anchors.count {
         case 0:
-            value =
-                Double(
-                    fallbackOffsetMs
-                ) +
-                target *
-                60_000 /
-                Double(
-                    max(
-                        fallbackBPM,
-                        1
-                    )
-                )
+            value = Double(fallbackOffsetMs) + fallbackTempoMap.seconds(forBeat: target) * 1_000
 
         case 1:
             let anchor =
                 anchors[0]
 
-            value =
-                Double(
-                    anchor
-                        .videoPositionMs
-                ) +
-                (
-                    target -
-                    anchor.chartBeat
-                ) *
-                60_000 /
-                Double(
-                    max(
-                        fallbackBPM,
-                        1
-                    )
-                )
+            value = Double(anchor.videoPositionMs) +
+                (fallbackTempoMap.seconds(forBeat: target) - fallbackTempoMap.seconds(forBeat: anchor.chartBeat)) * 1_000
 
         default:
             value =
@@ -239,9 +202,7 @@ public struct ChordSyncMap:
     ) -> Double {
         guard anchors.count >= 2
         else {
-            return Double(
-                fallbackBPM
-            )
+            return fallbackTempoMap.bpm(atBeat: beat)
         }
 
         let pair =
@@ -293,6 +254,10 @@ public struct ChordSyncMap:
                     atBeat: beat
                 )
         )
+    }
+
+    private var fallbackTempoMap: ChordTempoMap {
+        tempoMap ?? ChordTempoMap(bpm: fallbackBPM)
     }
 
     public static func canInsert(

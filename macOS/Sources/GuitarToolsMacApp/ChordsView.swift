@@ -11,8 +11,9 @@ struct ChordsView: View {
         var id: String { rawValue }
     }
 
-    @State private var mode: LibraryMode = .learn
+    @State private var mode: LibraryMode = .basic
     @State private var query = ""
+    @State private var readingGuideExpanded = false
     @State private var selectedRoot: GuitarNote?
     @State private var selectedQuality: GuitarChordQuality?
 
@@ -23,15 +24,16 @@ struct ChordsView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
-                MacPageHeader("コード", subtitle: "ネックを覗く向きで、定番の形を覚えましょう。") {
-                    MacStatusPill(text: mode == .learn ? "図なしで復習" : "\(resultCount) コード", systemImage: "guitars")
+                MacPageHeader("コード") {
+                    MacStatusPill(text: mode == .learn ? "コード学習" : "\(resultCount) コード", systemImage: "guitars")
                 }
-                Picker("コードの使い方", selection: $mode) {
-                    Text("覚える").tag(LibraryMode.learn)
-                    Text("基本（9）").tag(LibraryMode.basic)
-                    Text("すべて（\(CommonGuitarChords.all.count)）").tag(LibraryMode.all)
+                if mode != .learn {
+                    Picker("表示するコード", selection: $mode) {
+                        Text("基本（9）").tag(LibraryMode.basic)
+                        Text("すべて（\(CommonGuitarChords.all.count)）").tag(LibraryMode.all)
+                    }
+                    .pickerStyle(.segmented)
                 }
-                .pickerStyle(.segmented)
             }
             .padding(MacLayout.pagePadding)
             .macPageWidth(1_180)
@@ -43,6 +45,18 @@ struct ChordsView: View {
             }
         }
         .navigationTitle("コード")
+        .toolbar {
+            if mode == .learn {
+                Button("コード一覧", systemImage: "guitars") { mode = .basic }
+            } else {
+                Menu("その他のツール", systemImage: "ellipsis.circle") {
+                    Button("コード学習", systemImage: "brain") { mode = .learn }
+                }
+            }
+        }
+        .onAppear {
+            if learning.phase != .idle && learning.phase != .completed { mode = .learn }
+        }
         .searchable(text: $query, placement: .toolbar, prompt: "C, Db/F, Cm6/9...")
         .onChange(of: query) { _, value in
             if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && mode == .learn { mode = .all }
@@ -65,10 +79,11 @@ struct ChordsView: View {
                     MacSection("指定したコード（カポなし）") {
                         ChordFingeringView(symbol: exactQuery.symbol)
                             .frame(width: 260)
-                        Button("このコードを覚える", systemImage: "brain") {
-                            learn([exactQuery.symbol], title: "\(exactQuery.symbol)を覚える")
-                        }
-                        .buttonStyle(.borderedProminent)
+                            .contextMenu {
+                                Button("コード学習", systemImage: "brain") {
+                                    learn([exactQuery.symbol], title: "\(exactQuery.symbol)のコード")
+                                }
+                            }
                     }
                 } else if resultCount == 0 {
                     ContentUnavailableView(
@@ -100,16 +115,14 @@ struct ChordsView: View {
     }
 
     private var readingGuide: some View {
-        MacSection("コード図の読み方") {
-            ChordFingerLegend()
-            Text("数字は押さえる指、○は押さえずに鳴らす弦、×は鳴らさない弦です。m はマイナーを表します。指の位置は目安なので、無理のない押さえ方で練習してください。")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            if mode == .basic {
-                Text("まずは Em・Am・C などから。F は1本の指で複数の弦を押さえるバレーコードで、慣れるまで難しい形です。先に開放弦を使うコードを練習して大丈夫です。F を C や Em に替えても同じ響きにはなりません。すべて標準チューニング・カポなしの押さえ方です。")
-                    .font(.callout)
+        DisclosureGroup("コード図の読み方", isExpanded: $readingGuideExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                ChordFingerLegend()
+                Text("数字は指番号、○は開放弦、×は鳴らさない弦です。上が1弦、下が6弦、左がヘッド側です。標準チューニング・カポなしの押さえ方を表示します。")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .padding(.top, 8)
         }
     }
 
@@ -118,17 +131,15 @@ struct ChordsView: View {
             ForEach(filteredBasicShapes) { shape in
                 VStack(alignment: .leading, spacing: 10) {
                     ChordFingeringView(symbol: shape.name, compact: true)
-                    Button("定番の形を覚える", systemImage: "brain") {
-                        learn([shape.name], title: "\(shape.name)を覚える")
-                    }
-                    .buttonStyle(.bordered)
-                    Text("練習は定番フォーム。別の形は ⋯ から選べます。")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity)
                 .macContentSurface(radius: 18)
+                .contextMenu {
+                    Button("コード学習", systemImage: "brain") {
+                        learn([shape.name], title: "\(shape.name)のコード")
+                    }
+                }
             }
         }
     }
@@ -205,14 +216,15 @@ struct ChordsView: View {
                 ForEach(shapes) { shape in
                     VStack(spacing: 10) {
                         ChordFingeringView(symbol: shape.name, compact: true)
-                        Button("覚える", systemImage: "brain") {
-                            learn([shape.name], title: "\(shape.name)を覚える")
-                        }
-                        .buttonStyle(.bordered)
                     }
                     .padding(16)
                     .frame(maxWidth: .infinity)
                     .macContentSurface(radius: 18)
+                    .contextMenu {
+                        Button("コード学習", systemImage: "brain") {
+                            learn([shape.name], title: "\(shape.name)のコード")
+                        }
+                    }
                 }
             }
         }

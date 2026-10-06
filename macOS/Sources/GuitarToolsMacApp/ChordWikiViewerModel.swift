@@ -16,6 +16,10 @@ final class ChordWikiViewerModel:
     var results:
         [ChordWikiSearchResult] = []
 
+    @Published private(set) var recentCharts: [ChordWikiSearchResult] = []
+    private let recentStore: RecentChartsStore?
+    private let timingDefaults: UserDefaults?
+
     @Published private(set)
     var isSearching = false
 
@@ -30,7 +34,49 @@ final class ChordWikiViewerModel:
     var isLoading = false
 
     @Published
-    var bpm = 120
+    var bpm = 120 {
+        didSet {
+            guard bpm != oldValue, let timeline, isPlaying else { return }
+            if youtubeSyncEnabled {
+                // Without anchors, editing BPM should change the pace from here,
+                // not reinterpret all audio already played at the new tempo.
+                if anchors.isEmpty {
+                    youtubeOffsetMs = estimatedYouTubePosition() - timeline.milliseconds(forBeat: currentBeat, bpm: bpm)
+                }
+            } else {
+                let now = clock.nowSeconds()
+                let oldSeconds = timeline.seconds(forBeat: internalStartBeat, bpm: oldValue)
+                    + max(now - internalStartTime, 0) * internalPlaybackRate
+                currentBeat = timeline.beat(forSeconds: oldSeconds, bpm: oldValue)
+                internalStartBeat = currentBeat
+                internalStartTime = now
+            }
+            scrollRevision &+= 1
+            restartMetronome()
+        }
+    }
+
+    @Published private(set) var unmarkedBarsPerLine: Int?
+    @Published private(set) var scrollRevision: UInt64 = 0
+
+    var currentLine: TimedChartLine? { timeline?.line(atBeat: currentBeat) }
+
+    var playbackBPM: Double {
+        if youtubeSyncEnabled { return syncMap?.localBPM(atBeat: currentBeat) ?? Double(bpm) }
+        return timeline?.tempoMap(bpm: bpm).bpm(atBeat: currentBeat) ?? Double(bpm)
+    }
+
+    func secondsUntilNextLine() -> Double {
+        guard let line = currentLine, let timeline else { return 0 }
+        let end = line.startBeat + line.durationBeats
+        let duration: Double
+        if youtubeSyncEnabled {
+            duration = Double(videoPosition(forBeat: end) - videoPosition(forBeat: currentBeat)) / 1_000
+        } else {
+            duration = timeline.seconds(forBeat: end, bpm: bpm) - timeline.seconds(forBeat: currentBeat, bpm: bpm)
+        }
+        return max(duration / (youtubeSyncEnabled ? youtubePlaybackRate : internalPlaybackRate), 0)
+    }
 
     @Published
     var autoScroll = true
@@ -124,10 +170,15 @@ final class ChordWikiViewerModel:
             ChordChartMacClient(),
         clock:
             any AudioHostClock =
-            SystemAudioHostClock()
+            SystemAudioHostClock(),
+        recentStore: RecentChartsStore? = nil,
+        timingDefaults: UserDefaults? = nil
     ) {
         self.client = client
         self.clock = clock
+        self.recentStore = recentStore
+        self.timingDefaults = timingDefaults
+        recentCharts = recentStore?.entries ?? []
     }
 
     private var timer: Timer?
@@ -178,7 +229,8 @@ final class ChordWikiViewerModel:
             fallbackOffsetMs:
                 youtubeOffsetMs,
             totalBeats:
-                timeline.totalBeats
+                timeline.totalBeats,
+            tempoMap: timeline.tempoMap(bpm: bpm)
         )
     }
 
@@ -251,10 +303,13 @@ final class ChordWikiViewerModel:
                     try await client
                         .loadChart(result)
 
+                let savedBars = timingDefaults?.object(forKey: timingKey(loaded)) as? Int
+                let bars = savedBars.flatMap { (1...16).contains($0) ? $0 : nil }
                 let built =
                     ChordTimelineBuilder
                         .build(
-                            chart: loaded
+                            chart: loaded,
+                            unmarkedBarsPerLine: bars
                         )
 
                 guard requestID ==
@@ -264,6 +319,7 @@ final class ChordWikiViewerModel:
                 }
 
                 chart = loaded
+                unmarkedBarsPerLine = bars
                 timeline = built
                 bpm =
                     min(
@@ -290,17 +346,13 @@ final class ChordWikiViewerModel:
                 loopRestartPending = false
                 calibrationMode =
                     false
-                anchors =
-                    store.load(
-                        chart: loaded
-                    )
-                    .filter {
-                        $0.chartBeat >= 0 &&
-                        $0.chartBeat <=
-                            built.totalBeats
-                    }
+                anchors = retimedAnchors(store.load(chart: loaded), timeline: built)
 
                 isLoading = false
+                // ChordWiki uses the search title as the page lookup key;
+                // the title inside the chart can be different.
+                recentStore?.record(result)
+                recentCharts = recentStore?.entries ?? []
             } catch {
                 guard requestID ==
                     self.chartRequestID
@@ -333,11 +385,66 @@ final class ChordWikiViewerModel:
         loopEnabled = false
     }
 
+    func removeRecentChart(_ result: ChordWikiSearchResult) {
+        recentStore?.remove(result)
+        recentCharts = recentStore?.entries ?? []
+    }
+
+    func setUnmarkedBarsPerLine(_ bars: Int?) {
+        guard let chart, let previous = timeline else { return }
+        let oldLine = currentLine
+        let fraction = oldLine.map { (currentBeat - $0.startBeat) / $0.durationBeats } ?? 0
+        unmarkedBarsPerLine = bars.map { min(max($0, 1), 16) }
+        if let unmarkedBarsPerLine {
+            timingDefaults?.set(unmarkedBarsPerLine, forKey: timingKey(chart))
+        } else {
+            timingDefaults?.removeObject(forKey: timingKey(chart))
+        }
+        let rebuilt = ChordTimelineBuilder.build(chart: chart, unmarkedBarsPerLine: unmarkedBarsPerLine)
+        timeline = rebuilt
+        anchors = retimedAnchors(anchors, timeline: rebuilt)
+        if let oldLine, let newLine = rebuilt.lineTimings.first(where: { $0.lineIndex == oldLine.lineIndex }) {
+            currentBeat = newLine.startBeat + fraction * newLine.durationBeats
+        } else {
+            currentBeat = min(currentBeat, rebuilt.totalBeats)
+        }
+        if previous.totalBeats != rebuilt.totalBeats {
+            practiceLoop = ChordPracticeLoop.bars(startingAt: currentBeat, timeline: rebuilt)
+            loopEnabled = false
+        }
+        internalStartBeat = currentBeat
+        internalStartTime = clock.nowSeconds()
+        if youtubeSyncEnabled {
+            if anchors.isEmpty {
+                youtubeOffsetMs = estimatedYouTubePosition() - rebuilt.milliseconds(forBeat: currentBeat, bpm: bpm)
+            } else {
+                currentBeat = syncMap?.beat(forVideoPositionMs: estimatedYouTubePosition()) ?? currentBeat
+            }
+        }
+        scrollRevision &+= 1
+        if isPlaying { restartMetronome() }
+    }
+
+    private func retimedAnchors(_ values: [ChordSyncAnchor], timeline: ChordTimeline) -> [ChordSyncAnchor] {
+        values.compactMap { anchor in
+            guard let event = timeline.events.first(where: {
+                $0.lineIndex == anchor.lineIndex && $0.segmentIndex == anchor.segmentIndex && $0.symbol == anchor.symbol
+            }) else { return nil }
+            return ChordSyncAnchor(chartBeat: event.startBeat, videoPositionMs: anchor.videoPositionMs,
+                                   symbol: anchor.symbol, lineIndex: anchor.lineIndex, segmentIndex: anchor.segmentIndex)
+        }
+    }
+
+    private func timingKey(_ chart: ChordChart) -> String {
+        "guitar-tools.chart-bars.v1:" + (chart.sourceURL?.absoluteString ?? chart.sourceTitle)
+    }
+
     func setInternalPlaybackRate(_ rate: Double) {
         guard [0.5, 0.75, 1.0].contains(rate) else { return }
         internalStartBeat = currentBeat
         internalStartTime = clock.nowSeconds()
         internalPlaybackRate = rate
+        scrollRevision &+= 1
         if isPlaying { restartMetronome() }
     }
 
@@ -403,7 +510,7 @@ final class ChordWikiViewerModel:
         countInStartBeat = startBeat
         let beats = max(chart.beatsPerBar, 1)
         let rate = youtubeVideoID != nil ? youtubePlaybackRate : internalPlaybackRate
-        let tempo = min(max(Int((Double(bpm) * rate).rounded()), 30), 300)
+        let tempo = min(max(Int((playbackBPM * rate).rounded()), 30), 300)
         let config = MacMetronomeConfig(bpm: tempo, beatsPerBar: beats)
         metronome.start(configProvider: { config }, onBeat: { _ in })
         countInTask = Task { [weak self] in
@@ -485,6 +592,7 @@ final class ChordWikiViewerModel:
         }
 
         loopRestartPending = false
+        scrollRevision &+= 1
         currentBeat =
             min(
                 max(
@@ -911,11 +1019,8 @@ final class ChordWikiViewerModel:
             clock.nowSeconds() -
             internalStartTime
 
-        currentBeat =
-            internalStartBeat +
-            elapsed *
-            Double(bpm) /
-            60 * internalPlaybackRate
+        let startSeconds = timeline.seconds(forBeat: internalStartBeat, bpm: bpm)
+        currentBeat = timeline.beat(forSeconds: startSeconds + max(elapsed, 0) * internalPlaybackRate, bpm: bpm)
 
         if loopEnabled, let range = practiceLoop, currentBeat >= range.endBeat {
             currentBeat = range.wrappedBeat(currentBeat)
@@ -999,7 +1104,7 @@ final class ChordWikiViewerModel:
                         currentBeat
                 )
                 ?? Double(bpm)
-            : Double(bpm)
+            : playbackBPM
 
         let effective =
             max(
@@ -1084,9 +1189,7 @@ final class ChordWikiViewerModel:
                                     ?? Double(
                                         self.bpm
                                     )
-                                : Double(
-                                    self.bpm
-                                )
+                                : self.playbackBPM
 
                             return MacMetronomeConfig(
                                 bpm:

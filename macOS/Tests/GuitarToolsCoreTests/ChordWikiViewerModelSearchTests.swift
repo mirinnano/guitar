@@ -6,6 +6,59 @@ import GuitarToolsCore
 @MainActor
 final class ChordWikiViewerModelSearchTests: XCTestCase {
 
+    func testEditingBPMDuringPlaybackPreservesAlreadyPlayedBeats() async throws {
+        let clock = ChartTransportClock()
+        let chart = ChordChartParser.parse(String(repeating: "[C]first [G]second\n", count: 12), fallbackTitle: "Tempo editing")
+        let model = ChordWikiViewerModel(client: StubChordWikiClient(chart: chart, results: []), clock: clock)
+        model.open(ChordWikiSearchResult(title: "Tempo editing", url: URL(string: "https://ja.chordwiki.org/wiki/TempoEditing")!))
+        try await waitUntil { model.chart != nil }
+        model.startInternal()
+        defer { model.stop() }
+        clock.advance(2)
+        model.bpm = 60
+        XCTAssertEqual(model.currentBeat, 4, accuracy: 0.01, "The previous two seconds were played at 120 BPM")
+        clock.advance(1)
+        model.bpm = 120
+        XCTAssertEqual(model.currentBeat, 5, accuracy: 0.01, "Only the following second uses 60 BPM")
+    }
+
+    func testLyricLineScrollDurationFollowsSourceTempoChangesAndSpeed() async throws {
+        let chart = ChordChartParser.parse("{tempo:120}\n[C]first\n{tempo:60}\nwords without chords\n[G]third", fallbackTitle: "Lyric tempo")
+        let model = ChordWikiViewerModel(client: StubChordWikiClient(chart: chart, results: []))
+        model.open(ChordWikiSearchResult(title: "Lyric tempo", url: URL(string: "https://ja.chordwiki.org/wiki/LyricTempo")!))
+        try await waitUntil { model.chart != nil }
+        model.seek(beat: 5)
+        XCTAssertNil(model.currentEvent)
+        XCTAssertEqual(model.currentLine?.lineIndex, 1)
+        XCTAssertEqual(model.secondsUntilNextLine(), 3, accuracy: 0.01)
+        model.setInternalPlaybackRate(0.5)
+        XCTAssertEqual(model.secondsUntilNextLine(), 6, accuracy: 0.01)
+    }
+
+    func testUnmarkedLineLengthIsSavedPerChartAndKeepsTheCurrentLinePosition() async throws {
+        let suite = "chart-bars-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let chart = ChordChartParser.parse("[C]a│[G]b│[Am]c│[F]d│\n[C]hello [G]world", fallbackTitle: "Bar settings")
+        let result = ChordWikiSearchResult(title: "Bar settings", url: URL(string: "https://ja.chordwiki.org/wiki/BarSettings")!)
+        let client = StubChordWikiClient(chart: chart, results: [])
+        let model = ChordWikiViewerModel(client: client, timingDefaults: defaults)
+        model.open(result)
+        try await waitUntil { model.chart != nil }
+        model.seek(beat: 24)
+        model.setUnmarkedBarsPerLine(2)
+        XCTAssertEqual(model.currentLine?.lineIndex, 1)
+        XCTAssertEqual(model.currentBeat, 20, accuracy: 0.01)
+        XCTAssertEqual(model.timeline?.totalBeats, 24)
+        let reopened = ChordWikiViewerModel(client: client, timingDefaults: defaults)
+        reopened.open(result)
+        try await waitUntil { reopened.chart != nil }
+        XCTAssertEqual(reopened.unmarkedBarsPerLine, 2)
+        XCTAssertEqual(reopened.timeline?.totalBeats, 24)
+        reopened.setUnmarkedBarsPerLine(nil)
+        XCTAssertEqual(reopened.timeline?.totalBeats, 32)
+    }
+
     func testSubmittingSearchFromAnOpenChartShowsFreshResults() async throws {
         let chart = ChordChart(
             sourceTitle: "Previous song",
@@ -327,5 +380,19 @@ private actor StubChordWikiClient: ChordWikiClientProtocol {
 
     func requestedQueries() -> [String] {
         queries
+    }
+}
+
+private final class ChartTransportClock: AudioHostClock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0.0
+    func nowSeconds() -> Double {
+        lock.lock(); defer { lock.unlock() }
+        return value
+    }
+    func seconds(forHostTime hostTime: UInt64) -> Double { Double(hostTime) / 1_000_000_000 }
+    func advance(_ seconds: Double) {
+        lock.lock(); defer { lock.unlock() }
+        value += seconds
     }
 }

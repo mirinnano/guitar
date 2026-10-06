@@ -10,7 +10,10 @@ final class TunerModel:
     @Published
     var a4Hz = 440.0 {
         didSet {
+            let bounded = a4Hz.isFinite ? min(max(a4Hz, 400), 480) : 440
+            if a4Hz != bounded { a4Hz = bounded; return }
             persistPreferences()
+            recalculateReading()
         }
     }
 
@@ -19,6 +22,7 @@ final class TunerModel:
         GuitarTuning.standard {
         didSet {
             persistPreferences()
+            retarget()
         }
     }
 
@@ -29,6 +33,9 @@ final class TunerModel:
     @Published
     var sensitivity = 0.6 {
         didSet {
+            let bounded = sensitivity.isFinite ? min(max(sensitivity, 0), 1) : 0.6
+            if sensitivity != bounded { sensitivity = bounded; return }
+            analysisPipeline.setSensitivity(sensitivity)
             persistPreferences()
         }
     }
@@ -47,30 +54,32 @@ final class TunerModel:
     private let preferencesStore:
         AppPreferencesStore
 
-    private let detector =
-        YinPitchDetector()
+    private let analysisPipeline: TunerAnalysisPipeline
+    private let clock: any AudioHostClock
+    private var tracker = TunerPitchTracker()
+    private var handlerID: UUID?
+    private var inputStateSubscription: AnyCancellable?
+    private var freshnessTimer: DispatchSourceTimer?
+    private var lastResultReceivedAt: Double?
 
-    private let analysisQueue =
-        DispatchQueue(
-            label:
-                "dev.mirinnano.guitartools.mac.tuner",
-            qos: .userInitiated
-        )
+    var targetString: GuitarStringTuning? {
+        target?.string ?? selectedTuning.strings.first { $0.stringNumber == lockedStringNumber }
+    }
 
-    private var handlerID:
-        UUID?
-
-    private var history:
-        [Double] = []
+    var targetFrequencyHz: Double? {
+        targetString.map { GuitarNote.frequency(forMIDI: $0.midi, a4Hz: a4Hz) }
+    }
 
     init(
         audio: AudioInputModel,
-        preferencesStore:
-            AppPreferencesStore
+        preferencesStore: AppPreferencesStore,
+        analysisPipeline: TunerAnalysisPipeline = TunerAnalysisPipeline(),
+        clock: any AudioHostClock = SystemAudioHostClock()
     ) {
         self.audio = audio
-        self.preferencesStore =
-            preferencesStore
+        self.preferencesStore = preferencesStore
+        self.analysisPipeline = analysisPipeline
+        self.clock = clock
 
         let saved =
             preferencesStore
@@ -112,73 +121,60 @@ final class TunerModel:
                     }
                 ?? .standard
         }
+        inputStateSubscription = audio.$isRunning.dropFirst().sink { [weak self] running in
+            if !running { self?.resetInputAnalysis() }
+        }
     }
 
-    func start() {
-        guard handlerID == nil
-        else {
-            return
-        }
-
-        if !audio.isRunning {
-            audio
-                .requestPermissionAndStart()
-        }
-
-        handlerID =
-            audio.addPCMFrameHandler {
-                [weak self]
-                samples,
-                sampleRate,
-                _ in
-
-                guard let self else {
-                    return
-                }
-
-                Task {
-                    @MainActor in
-
-                    let sensitivity =
-                        self.sensitivity
-
-                    self.analysisQueue
-                        .async {
-                            Self.processFrame(
-                                samples:
-                                    samples,
-                                sampleRate:
-                                    sampleRate,
-                                sensitivity:
-                                    sensitivity
-                            ) {
-                                [weak self]
-                                frequency in
-
-                                Task {
-                                    @MainActor in
-                                    self?
-                                        .acceptFrequency(
-                                            frequency
-                                        )
-                                }
-                            }
-                        }
-                }
+    /// Observing a visible tuner does not itself request permission or start hardware.
+    func start(requestInput: Bool = true) {
+        if handlerID == nil {
+            analysisPipeline.start(sensitivity: sensitivity) { [weak self] result in
+                Task { @MainActor [weak self] in self?.accept(result) }
             }
+            handlerID = audio.addPCMFrameHandler { [weak pipeline = analysisPipeline] samples, rate, time in
+                pipeline?.ingest(samples: samples, sampleRate: rate, timestampSeconds: time)
+            }
+            let timer = DispatchSource.makeTimerSource(queue: .main)
+            timer.schedule(deadline: .now() + 0.1, repeating: 0.1)
+            timer.setEventHandler { [weak self] in self?.expireReading() }
+            timer.resume()
+            freshnessTimer = timer
+        }
+        if requestInput && !audio.isRunning { audio.requestPermissionAndStart() }
     }
 
     func stop() {
-        if let handlerID {
-            audio.removePCMFrameHandler(
-                handlerID
-            )
-        }
-
+        if let handlerID { audio.removePCMFrameHandler(handlerID) }
         handlerID = nil
-        history.removeAll()
+        analysisPipeline.stop()
+        freshnessTimer?.cancel()
+        freshnessTimer = nil
+        clearReading()
+    }
+
+    deinit {
+        if let handlerID { audio.removePCMFrameHandler(handlerID) }
+        analysisPipeline.stop()
+        freshnessTimer?.cancel()
+    }
+
+    private func resetInputAnalysis() {
+        analysisPipeline.reset()
+        clearReading()
+    }
+
+    private func clearReading() {
+        tracker.reset()
+        lastResultReceivedAt = nil
         reading = nil
         target = nil
+    }
+
+    func expireReading() {
+        if let lastResultReceivedAt, clock.nowSeconds() - lastResultReceivedAt > TunerAnalysisPipeline.freshnessSeconds {
+            clearReading()
+        }
     }
 
     func setTuning(
@@ -191,12 +187,15 @@ final class TunerModel:
     }
 
     func selectCustomTuning() {
-        if selectedTuning.id !=
-            "custom" {
-            selectedTuning =
-                .customDefault
+        if selectedTuning.id != "custom" { setTuning(savedCustomTuning()) }
+    }
+
+    private func savedCustomTuning() -> GuitarTuning {
+        var tuning = GuitarTuning.customDefault
+        for (number, midi) in preferencesStore.value.tuner.customStringMIDI {
+            tuning = tuning.withStringMIDI(stringNumber: number, midi: midi)
         }
-        retarget()
+        return tuning
     }
 
     func changeCustomString(
@@ -207,7 +206,7 @@ final class TunerModel:
             selectedTuning.id ==
                 "custom"
             ? selectedTuning
-            : .customDefault
+            : savedCustomTuning()
 
         guard let string =
             current.strings
@@ -241,88 +240,17 @@ final class TunerModel:
         retarget()
     }
 
-    private nonisolated static func processFrame(
-        samples: [Float],
-        sampleRate: Double,
-        sensitivity: Double,
-        completion:
-            @escaping (Double?) -> Void
-    ) {
-        let minimumRMS =
-            0.025 -
-            sensitivity *
-            (0.025 - 0.003)
-
-        let rms =
-            sqrt(
-                samples.reduce(0.0) {
-                    $0 +
-                    Double(
-                        $1 * $1
-                    )
-                } /
-                Double(
-                    max(
-                        samples.count,
-                        1
-                    )
-                )
-            )
-
-        guard rms >= minimumRMS
-        else {
-            completion(nil)
-            return
-        }
-
-        let frequency =
-            YinPitchDetector()
-                .detect(
-                    samples: samples,
-                    sampleRate:
-                        sampleRate
-                )
-
-        completion(frequency)
+    private func accept(_ result: TunerAnalysisResult) {
+        guard handlerID != nil, analysisPipeline.accepts(result) else { return }
+        if result.isReset { clearReading(); return }
+        lastResultReceivedAt = clock.nowSeconds()
+        let frequency = tracker.update(frequencyHz: result.frequencyHz, timestampSeconds: result.timestampSeconds)
+        reading = frequency.flatMap { GuitarPitchReading.fromFrequency($0, a4Hz: a4Hz) }
+        retarget()
     }
 
-    private func acceptFrequency(
-        _ frequency: Double?
-    ) {
-        guard let frequency
-        else {
-            history.removeAll()
-            reading = nil
-            target = nil
-            return
-        }
-
-        history.append(
-            frequency
-        )
-
-        if history.count > 5 {
-            history.removeFirst(
-                history.count - 5
-            )
-        }
-
-        let sorted =
-            history.sorted()
-
-        let median =
-            sorted[
-                sorted.count / 2
-            ]
-
-        reading =
-            GuitarPitchReading
-                .fromFrequency(
-                    median,
-                    a4Hz:
-                        a4Hz
-                )
-
+    private func recalculateReading() {
+        reading = reading.flatMap { GuitarPitchReading.fromFrequency($0.frequencyHz, a4Hz: a4Hz) }
         retarget()
     }
 

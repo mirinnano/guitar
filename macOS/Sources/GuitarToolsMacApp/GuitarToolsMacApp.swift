@@ -45,7 +45,7 @@ struct GuitarToolsMacApp: App {
             }
 
             CommandMenu(
-                "練習"
+                "再生"
             ) {
                 Button(
                     "再生 / 一時停止"

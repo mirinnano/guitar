@@ -53,6 +53,7 @@ public struct ChordChart: Sendable, Equatable {
     public let capoDirectiveWarning: String?
     /// Symbols that could not safely be converted; these are retained as text, not diagrams.
     public let unconvertedChordSymbols: [String]
+    public let tempoChanges: [ChartTempoChange]
 
     public init(
         sourceTitle: String,
@@ -68,7 +69,8 @@ public struct ChordChart: Sendable, Equatable {
         sourceCapo: Int = 0,
         sourceKey: String? = nil,
         capoDirectiveWarning: String? = nil,
-        unconvertedChordSymbols: [String] = []
+        unconvertedChordSymbols: [String] = [],
+        tempoChanges: [ChartTempoChange] = []
     ) {
         self.sourceTitle = sourceTitle
         self.title = title
@@ -84,6 +86,7 @@ public struct ChordChart: Sendable, Equatable {
         self.sourceKey = sourceKey
         self.capoDirectiveWarning = capoDirectiveWarning
         self.unconvertedChordSymbols = unconvertedChordSymbols
+        self.tempoChanges = tempoChanges
     }
 }
 
@@ -123,15 +126,24 @@ public struct ChordTimeline: Sendable, Equatable {
     public let beatsPerBar: Int
     public let totalBeats: Double
     public let events: [TimedChordEvent]
+    public let lineTimings: [TimedChartLine]
+    public let tempoChanges: [TimedTempoChange]
+    public let sourceBPM: Int?
 
     public init(
         beatsPerBar: Int,
         totalBeats: Double,
-        events: [TimedChordEvent]
+        events: [TimedChordEvent],
+        lineTimings: [TimedChartLine] = [],
+        tempoChanges: [TimedTempoChange] = [],
+        sourceBPM: Int? = nil
     ) {
         self.beatsPerBar = beatsPerBar
         self.totalBeats = totalBeats
         self.events = events
+        self.lineTimings = lineTimings
+        self.tempoChanges = tempoChanges
+        self.sourceBPM = sourceBPM
     }
 
     public func seconds(
@@ -142,9 +154,7 @@ public struct ChordTimeline: Sendable, Equatable {
             return 0
         }
 
-        return max(beat, 0) *
-            60.0 /
-            Double(bpm)
+        return tempoMap(bpm: bpm).seconds(forBeat: max(beat, 0))
     }
 
     public func beat(
@@ -155,15 +165,16 @@ public struct ChordTimeline: Sendable, Equatable {
             return 0
         }
 
-        return min(
-            max(
-                seconds *
-                    Double(bpm) /
-                    60.0,
-                0
-            ),
-            totalBeats
-        )
+        return min(max(tempoMap(bpm: bpm).beat(forSeconds: seconds), 0), totalBeats)
+    }
+
+    public func tempoMap(bpm: Int) -> ChordTempoMap {
+        ChordTempoMap(bpm: bpm, sourceBPM: sourceBPM, changes: tempoChanges)
+    }
+
+    public func line(atBeat beat: Double) -> TimedChartLine? {
+        if beat >= totalBeats { return lineTimings.last }
+        return lineTimings.last { beat >= $0.startBeat && beat < $0.startBeat + $0.durationBeats }
     }
 
     public func event(
@@ -264,6 +275,8 @@ public enum ChordChartParser {
         var sourceCapo = 0
         var capoDirectiveWarning: String?
         var bpm: Int?
+        var hasExplicitTempo = false
+        var tempoChanges: [ChartTempoChange] = []
         var beatsPerBar = 4
         var beatUnit = 4
         var lines: [ChartLine] = []
@@ -334,7 +347,14 @@ public enum ChordChartParser {
                             Int(value),
                            (20...400)
                             .contains(number) {
-                            bpm = number
+                            if !hasExplicitTempo {
+                                bpm = number
+                                hasExplicitTempo = true
+                            } else if lines.contains(where: { $0.kind == .content }) {
+                                tempoChanges.append(ChartTempoChange(lineIndex: lines.count, bpm: number))
+                            } else {
+                                bpm = number
+                            }
                         }
 
                     case "time",
@@ -391,15 +411,17 @@ public enum ChordChartParser {
                     return
                 }
 
-                lines.append(
-                    parseContentLine(
-                        rawLine
-                    )
-                )
+                if trimmed.hasPrefix("※") {
+                    lines.append(ChartLine(segments: [ChartSegment(text: rawLine)], kind: .comment))
+                } else {
+                    lines.append(parseContentLine(rawLine))
+                }
             }
 
+        var removedLeadingLines = 0
         while lines.first?.kind == .blank {
             lines.removeFirst()
+            removedLeadingLines += 1
         }
 
         while lines.last?.kind == .blank {
@@ -443,7 +465,11 @@ public enum ChordChartParser {
             sourceCapo: sourceCapo,
             sourceKey: sourceKey,
             capoDirectiveWarning: capoDirectiveWarning,
-            unconvertedChordSymbols: unconverted
+            unconvertedChordSymbols: unconverted,
+            tempoChanges: tempoChanges.compactMap {
+                let index = max($0.lineIndex - removedLeadingLines, 0)
+                return index < lines.count ? ChartTempoChange(lineIndex: index, bpm: $0.bpm) : nil
+            }
         )
     }
 
@@ -700,17 +726,25 @@ public enum ChordChartParser {
 public enum ChordTimelineBuilder {
 
     public static func build(
-        chart: ChordChart
+        chart: ChordChart,
+        unmarkedBarsPerLine: Int? = nil
     ) -> ChordTimeline {
         var beatCursor = 0.0
         var nextID = 0
         var events:
             [TimedChordEvent] = []
+        var lineTimings: [TimedChartLine] = []
+        var tempoChanges: [TimedTempoChange] = []
+        let inferredBars = inferredUnmarkedBars(chart: chart)
+        let fallbackBars = min(max(unmarkedBarsPerLine ?? inferredBars, 1), 16)
 
         for (
             lineIndex,
             line
         ) in chart.lines.enumerated() {
+            for change in chart.tempoChanges where change.lineIndex == lineIndex {
+                tempoChanges.append(TimedTempoChange(startBeat: beatCursor, bpm: change.bpm))
+            }
             guard line.kind == .content else {
                 continue
             }
@@ -743,9 +777,12 @@ public enum ChordTimelineBuilder {
                         $0.timingChord != nil
                     }
 
-            guard hasText || hasChord else {
+            let hasBars = line.segments.contains { normalizedBars($0.text).contains("|") }
+            guard hasText || hasChord || hasBars else {
                 continue
             }
+            let lineStart = beatCursor
+            let barLength = Double(chart.beatsPerBar) * Double(hasBars ? 1 : fallbackBars)
 
             for group in effective {
                 let barStart =
@@ -753,9 +790,7 @@ public enum ChordTimelineBuilder {
 
                 if !group.isEmpty {
                     let duration =
-                        Double(
-                            chart.beatsPerBar
-                        ) /
+                        barLength /
                         Double(group.count)
 
                     for (
@@ -784,11 +819,10 @@ public enum ChordTimelineBuilder {
                     }
                 }
 
-                beatCursor +=
-                    Double(
-                        chart.beatsPerBar
-                    )
+                beatCursor += barLength
             }
+            lineTimings.append(TimedChartLine(lineIndex: lineIndex, startBeat: lineStart,
+                                             durationBeats: beatCursor - lineStart))
         }
 
         return ChordTimeline(
@@ -796,8 +830,21 @@ public enum ChordTimelineBuilder {
                 chart.beatsPerBar,
             totalBeats:
                 beatCursor,
-            events: events
+            events: events,
+            lineTimings: lineTimings,
+            tempoChanges: tempoChanges,
+            sourceBPM: chart.bpm
         )
+    }
+
+    public static func inferredUnmarkedBars(chart: ChordChart) -> Int {
+        let counts = chart.lines.filter { $0.kind == .content && $0.segments.contains { normalizedBars($0.text).contains("|") } }
+            .map { splitIntoBars($0).count }.filter { $0 > 0 }.sorted()
+        return counts.isEmpty ? 1 : min(max(counts[counts.count / 2], 1), 16)
+    }
+
+    private static func normalizedBars(_ text: String) -> String {
+        text.map { "｜│┃¦".contains($0) ? "|" : String($0) }.joined()
     }
 
     private struct IndexedChord {
@@ -832,7 +879,7 @@ public enum ChordTimelineBuilder {
             }
 
             let barCount =
-                segment.text
+                normalizedBars(segment.text)
                     .split(
                         separator: "|",
                         omittingEmptySubsequences:
@@ -857,11 +904,6 @@ public enum ChordTimelineBuilder {
         if !current.isEmpty ||
             !sawBar {
             groups.append(current)
-        }
-
-        while groups.count > 1 &&
-            groups.last?.isEmpty == true {
-            groups.removeLast()
         }
 
         return groups

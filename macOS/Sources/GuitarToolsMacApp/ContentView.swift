@@ -5,8 +5,6 @@ enum MacTool:
     CaseIterable,
     Identifiable {
 
-    case home =
-        "はじめに"
     case metronome =
         "メトロノーム"
     case tuner =
@@ -30,8 +28,6 @@ enum MacTool:
 
     var systemImage: String {
         switch self {
-        case .home:
-            "house"
         case .metronome:
             "metronome"
         case .tuner:
@@ -65,10 +61,11 @@ struct ContentView: View {
     @State
     private var selection:
         MacTool? =
-        .home
+        .charts
 
     @State private var practiceRequest: ChartPracticeRequest?
-    @StateObject private var chartModel = ChordWikiViewerModel()
+    @StateObject private var chartModel: ChordWikiViewerModel
+    @State private var additionalToolsExpanded = false
     @StateObject private var practiceModel: ChordFollowPracticeModel
     @StateObject private var chordLearning = ChordLearningModel()
 
@@ -78,6 +75,9 @@ struct ContentView: View {
         _audio = StateObject(wrappedValue: audio)
         _preferences = StateObject(wrappedValue: preferences)
         _output = StateObject(wrappedValue: AudioOutputModel(preferencesStore: preferences))
+        let charts = ChordWikiViewerModel(recentStore: RecentChartsStore(), timingDefaults: .standard)
+        charts.countInEnabled = false
+        _chartModel = StateObject(wrappedValue: charts)
         _practiceModel = StateObject(wrappedValue: ChordFollowPracticeModel(
             audio: audio, preferencesStore: preferences
         ))
@@ -86,30 +86,32 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                navigationItem(.home)
+                navigationItem(.charts)
 
-                Section("練習") {
-                    navigationItem(.metronome)
+                Section("ツール") {
                     navigationItem(.tuner)
-                    navigationItem(.chordFollow)
-                    navigationItem(.practice)
+                    navigationItem(.metronome)
                 }
 
                 Section("ライブラリ") {
-                    navigationItem(.charts)
                     navigationItem(.chords)
                     navigationItem(.fretboard)
                 }
 
-                Section("オーディオ") {
+                DisclosureGroup("その他のツール", isExpanded: $additionalToolsExpanded) {
+                    navigationItem(.practice)
+                    navigationItem(.chordFollow)
                     navigationItem(.chordDetection)
                 }
 
             }
             .listStyle(.sidebar)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                audioFooter
-                    .padding(12)
+                if selection == .tuner || selection == .chordFollow || selection == .chordDetection
+                    || audio.isStartRequested || audio.isRunning {
+                    audioFooter
+                        .padding(12)
+                }
             }
             .navigationTitle(
                 "Guitar Tools"
@@ -177,11 +179,6 @@ struct ContentView: View {
         some View {
 
         switch selection {
-        case .home:
-            HomeView { tool in
-                selection = tool
-            }
-
         case .metronome:
             MetronomeView(
                 preferencesStore:
@@ -240,6 +237,11 @@ struct ContentView: View {
         }
     }
 
+    private var audioInputActionTitle: String {
+        if audio.isRunning { return "オーディオ入力を停止" }
+        return audio.isStartRequested ? "入力開始をキャンセル" : "オーディオ入力を開始"
+    }
+
     private var audioFooter:
         some View {
 
@@ -253,11 +255,11 @@ struct ContentView: View {
                     systemName:
                         audio.isRunning
                         ? "waveform.circle.fill"
-                        : "waveform.circle"
+                        : (audio.isStartRequested ? "hourglass.circle" : "waveform.circle")
                 )
                 .font(.title3)
                 .foregroundStyle(
-                    audio.isRunning
+                    audio.isStartRequested
                     ? Color.accentColor
                     : Color.secondary
                 )
@@ -266,11 +268,7 @@ struct ContentView: View {
                     alignment: .leading,
                     spacing: 1
                 ) {
-                    Text(
-                        audio.isRunning
-                        ? "オーディオ入力中"
-                        : "オーディオ入力"
-                    )
+                    Text(audioInputActionTitle)
                     .font(
                         .callout
                             .weight(.medium)
@@ -287,7 +285,7 @@ struct ContentView: View {
 
                 Spacer(minLength: 4)
 
-                Image(systemName: audio.isRunning ? "pause.fill" : "play.fill")
+                Image(systemName: audio.isRunning ? "pause.fill" : (audio.isStartRequested ? "xmark" : "play.fill"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(audio.clipping ? .red : .secondary)
             }
@@ -305,11 +303,9 @@ struct ContentView: View {
             12
         )
         .macGlassSurface(radius: 16)
-        .help(
-            audio.isRunning
-            ? "オーディオ入力を停止"
-            : "オーディオ入力を開始"
-        )
+        .help(audioInputActionTitle)
+        .accessibilityLabel(audioInputActionTitle)
+        .accessibilityValue(audio.inputLabel)
     }
 
     private func navigationItem(
@@ -340,7 +336,7 @@ struct MacAboutView:
                 MacPageHeader(
                     "Guitar Tools for Mac",
                     subtitle:
-                        "ギターのチューニング、譜面の表示、演奏の判定"
+                        "譜面、コードの押さえ方、チューナー"
                 )
 
                 MacSection(
