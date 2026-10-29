@@ -218,8 +218,13 @@ final class ChordWikiViewerModelSearchTests: XCTestCase {
         defer { model.stop() }
         model.onYouTubeProgress(positionMs: 500, durationMs: 60_000, playing: false, rate: 0.75)
         var emissions = 0
-        let subscription = model.objectWillChange.sink { emissions += 1 }
-        defer { subscription.cancel() }
+        var modelEmissions = 0
+        let subscriptions = [
+            model.objectWillChange.sink { modelEmissions += 1 },
+            model.playhead.objectWillChange.sink { emissions += 1 },
+            model.activePosition.objectWillChange.sink { emissions += 1 }
+        ]
+        defer { subscriptions.forEach { $0.cancel() } }
 
         for _ in 0..<10 {
             model.onYouTubeProgress(positionMs: 500, durationMs: 60_000, playing: false, rate: 0.75)
@@ -234,6 +239,8 @@ final class ChordWikiViewerModelSearchTests: XCTestCase {
         let changedEmissions = emissions
         model.onYouTubeProgress(positionMs: 1_000, durationMs: 60_000, playing: false, rate: 0.75)
         XCTAssertEqual(emissions, changedEmissions)
+        // Position samples must not rebuild the toolbar, menus and side panel.
+        XCTAssertEqual(modelEmissions, 0)
     }
 
     func testCountInCanBeDisabledForImmediatePlayback() async throws {

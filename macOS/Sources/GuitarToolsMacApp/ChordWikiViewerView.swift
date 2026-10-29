@@ -285,90 +285,22 @@ struct ChordWikiViewerView:
                 Divider()
             }
 
-            ScrollViewReader {
-                proxy in
-
-                ScrollView {
-                    LazyVStack(
-                        alignment: .leading,
-                        spacing: 14
-                    ) {
-                        ForEach(
-                            Array(
-                                chart.lines
-                                    .enumerated()
-                            ),
-                            id: \.offset
-                        ) {
-                            index,
-                            line in
-
-                            ViewerChartLine(
-                                line: line,
-                                lineIndex: index,
-                                activeEvent:
-                                    model
-                                        .currentEvent,
-                                anchors:
-                                    model.anchors,
-                                calibrationMode:
-                                    model
-                                        .calibrationMode,
-                                showFingerings: showFingerings,
-                                fontSize: CGFloat(min(max(chartFontSize, 14), 28)),
-                                events:
-                                    model
-                                        .timeline?
-                                        .events
-                                        .filter {
-                                            $0.lineIndex ==
-                                            index
-                                        }
-                                    ?? [],
-                                previousSymbols: ChartVoicingContext.previousSymbols(timeline: model.timeline, lineIndex: index),
-                                canAnchor: model.youtubeVideoID != nil,
-                                onAnchor: { event in
-                                    if !model.youtubeSyncEnabled { model.setYouTubeSync(true) }
-                                    model.addAnchor(event: event)
-                                }
-                            )
-                            .id(index)
-                        }
-                    }
-                    .frame(maxWidth: 1_100, alignment: .leading)
-                    .padding(28)
-                    .frame(
-                        maxWidth:
-                            .infinity,
-                        alignment:
-                            .center
-                    )
-                }
-                .background(Color(nsColor: .textBackgroundColor))
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    transport
-                        .frame(maxWidth: 880)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 10)
-                        .padding(.bottom, 16)
-                        .frame(maxWidth: .infinity)
-                }
-                .task(id: scrollTrackingID) {
-                    guard model.autoScroll, !model.calibrationMode,
-                          let line = model.currentLine else { return }
-                    if !model.isPlaying && model.scrollRevision == 0 { return }
-                    try? await Task.sleep(for: .milliseconds(50))
-                    guard !Task.isCancelled else { return }
-                    proxy.scrollTo(line.lineIndex, anchor: .center)
-                    guard model.isPlaying,
-                          let next = model.timeline?.lineTimings.first(where: { $0.startBeat > line.startBeat })
-                    else { return }
-                    let duration = model.secondsUntilNextLine()
-                    guard duration > 0 else { return }
-                    withAnimation(.linear(duration: duration)) {
-                        proxy.scrollTo(next.lineIndex, anchor: .center)
-                    }
-                }
+            // Decided from the width once, not by ViewThatFits re-measuring every
+            // pickers-and-menus layout candidate whenever the slider moves.
+            let transportWidth = min(880, geometry.size.width - (musicPanelPresented ? (compact ? 260 : 320) : 0) - 40)
+            ChartLinesScroller(
+                model: model,
+                active: model.activePosition,
+                chart: chart,
+                showFingerings: showFingerings,
+                chartFontSize: chartFontSize
+            ) {
+                transport(wide: transportWidth >= 720)
+                    .frame(maxWidth: 880)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                    .padding(.bottom, 16)
+                    .frame(maxWidth: .infinity)
             }
             .safeAreaInset(edge: .trailing, spacing: 0) {
                 if musicPanelPresented {
@@ -391,13 +323,6 @@ struct ChordWikiViewerView:
                 if small && !playbackActive { setMusicPanelPresented(false) }
             }
         }
-    }
-
-    private var scrollTrackingID: String {
-        [String(model.currentLine?.lineIndex ?? -1), String(model.scrollRevision),
-         String(model.isPlaying), String(model.autoScroll), String(model.calibrationMode),
-         String(model.youtubeSyncEnabled ? model.youtubePlaybackRate : model.internalPlaybackRate),
-         String(model.playbackBPM), String(showFingerings), String(chartFontSize)].joined(separator: ":")
     }
 
     private func header(
@@ -432,9 +357,7 @@ struct ChordWikiViewerView:
                     Text("キー \(key)")
                 }
 
-                Text(
-                    "\(Int(model.playbackBPM.rounded())) BPM"
-                )
+                PlaybackBPMText(model: model, playhead: model.playhead)
                 if chart.bpm == nil {
                     Text("（譜面にBPMの記載なし）")
                         .foregroundStyle(.tertiary)
@@ -488,10 +411,9 @@ struct ChordWikiViewerView:
         .padding(.vertical, 9)
     }
 
-    private var transport:
-        some View {
+    private func transport(wide: Bool) -> some View {
         VStack(spacing: 12) {
-            ViewThatFits(in: .horizontal) {
+            if wide {
                 HStack(spacing: 12) {
                     playbackButtons
                     Spacer(minLength: 12)
@@ -499,110 +421,17 @@ struct ChordWikiViewerView:
                     Spacer(minLength: 12)
                     HStack(spacing: 12) { practiceControls }
                 }
+            } else {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
                         playbackButtons
                         Spacer(minLength: 8)
                         currentChord
                     }
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 12) { practiceControls }
-                        VStack(alignment: .leading, spacing: 6) { practiceControls }
-                    }
+                    HStack(spacing: 12) { practiceControls }
                 }
             }
-            Slider(
-                value:
-                    Binding(
-                        get: {
-                            model
-                                .currentBeat
-                        },
-                        set: {
-                            target in
-
-                            model.seek(
-                                beat: target
-                            )
-
-                            if model
-                                .youtubeSyncEnabled {
-                                youtubeController
-                                    .seek(
-                                        toMilliseconds:
-                                            model
-                                                .videoPosition(
-                                                    forBeat:
-                                                        target
-                                                )
-                                    )
-                            }
-                        }
-                    ),
-                in:
-                    0...max(
-                        model
-                            .timeline?
-                            .totalBeats
-                        ?? 0,
-                        0.01
-                    )
-            )
-            .accessibilityLabel("譜面の再生位置")
-
-            HStack {
-                Text(
-                    formatTime(
-                        model
-                            .youtubeSyncEnabled
-                        ? model
-                            .youtubePositionMs
-                        : model.timeline?
-                            .milliseconds(
-                                forBeat:
-                                    model
-                                        .currentBeat,
-                                bpm:
-                                    model.bpm
-                            )
-                            ?? 0
-                    )
-                )
-
-                Spacer()
-
-                Text("\(model.timeline?.barNumber(atBeat: model.currentBeat) ?? 1)小節目")
-
-                Spacer()
-
-                Text(
-                    formatTime(
-                        model
-                            .youtubeSyncEnabled &&
-                        model
-                            .youtubeDurationMs >
-                        0
-                        ? model
-                            .youtubeDurationMs
-                        : model.timeline?
-                            .milliseconds(
-                                forBeat:
-                                    model
-                                        .timeline?
-                                        .totalBeats
-                                    ?? 0,
-                                bpm:
-                                    model.bpm
-                            )
-                            ?? 0
-                    )
-                )
-            }
-            .font(
-                .callout
-                    .monospacedDigit()
-            )
-            .foregroundStyle(.primary)
+            TransportPositionRows(model: model, playhead: model.playhead, onSeek: seekPlayback)
         }
         .padding(
             .horizontal,
@@ -616,12 +445,7 @@ struct ChordWikiViewerView:
     }
 
     private var currentChord: some View {
-        Text(model.currentEvent?.symbol ?? "—")
-            .font(.system(size: 19, weight: .semibold, design: .rounded))
-            .foregroundStyle(.primary)
-            .lineLimit(1)
-            .accessibilityLabel("現在のコード")
-            .accessibilityValue(model.currentEvent?.symbol ?? "なし")
+        CurrentChordLabel(active: model.activePosition)
     }
 
     private var playbackButtons: some View {
@@ -675,7 +499,6 @@ struct ChordWikiViewerView:
                 }
                 Button("現在位置をA（開始）に設定", action: model.setLoopStart)
                 Button("現在位置をB（終了）に設定", action: model.setLoopEnd)
-                    .disabled(model.currentBeat <= (model.practiceLoop?.startBeat ?? 0))
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -930,7 +753,9 @@ struct ChordWikiViewerView:
                     if let status = model.syncStatus {
                         LabeledContent("同期方式", value: syncPrecisionText(status.precision))
                         if status.anchorCount >= 2 {
-                            LabeledContent("局所BPM", value: String(format: "%.1f", status.localBPM))
+                            LabeledContent("局所BPM") {
+                                LocalBPMText(model: model, playhead: model.playhead)
+                            }
                         }
                     }
                     Toggle(
@@ -1190,5 +1015,153 @@ struct ChordWikiViewerView:
                 "%.2f",
             beat
         )
+    }
+}
+
+/// Rows and auto-scroll; re-rendered at chord and line changes, not on every playback tick.
+private struct ChartLinesScroller<Transport: View>: View {
+    @ObservedObject var model: ChordWikiViewerModel
+    @ObservedObject var active: ChartActivePosition
+    let chart: ChordChart
+    let showFingerings: Bool
+    let chartFontSize: Int
+    @ViewBuilder let transport: () -> Transport
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(chart.lines.enumerated()), id: \.offset) { index, line in
+                        ViewerChartLine(
+                            line: line,
+                            lineIndex: index,
+                            activeSegment: active.event?.lineIndex == index ? active.event?.segmentIndex : nil,
+                            anchoredSegments: Set(model.anchors.filter { $0.lineIndex == index }.map(\.segmentIndex)),
+                            calibrationMode: model.calibrationMode,
+                            showFingerings: showFingerings,
+                            fontSize: CGFloat(min(max(chartFontSize, 14), 28)),
+                            events: model.eventsByLine[index] ?? [],
+                            previousSymbols: model.previousSymbols(lineIndex: index),
+                            canAnchor: model.youtubeVideoID != nil,
+                            onAnchor: { event in
+                                if !model.youtubeSyncEnabled { model.setYouTubeSync(true) }
+                                model.addAnchor(event: event)
+                            }
+                        )
+                        .equatable()
+                        .id(index)
+                    }
+                }
+                .frame(maxWidth: 1_100, alignment: .leading)
+                .padding(28)
+                // Room to scroll the last lines above the floating transport.
+                .padding(.bottom, 150)
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+            // An overlay keeps transport updates out of the scroll view's layout.
+            .overlay(alignment: .bottom, content: transport)
+            .task(id: scrollTrackingID) {
+                guard model.autoScroll, !model.calibrationMode,
+                      let line = model.currentLine else { return }
+                if !model.isPlaying && model.scrollRevision == 0 { return }
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled else { return }
+                proxy.scrollTo(line.lineIndex, anchor: .center)
+                guard model.isPlaying,
+                      let next = model.timeline?.lineTimings.first(where: { $0.startBeat > line.startBeat })
+                else { return }
+                let duration = model.secondsUntilNextLine()
+                guard duration > 0 else { return }
+                withAnimation(.linear(duration: duration)) {
+                    proxy.scrollTo(next.lineIndex, anchor: .center)
+                }
+            }
+        }
+    }
+
+    private var scrollTrackingID: String {
+        [String(active.lineIndex ?? -1), String(model.scrollRevision),
+         String(model.isPlaying), String(model.autoScroll), String(model.calibrationMode),
+         String(model.youtubeSyncEnabled ? model.youtubePlaybackRate : model.internalPlaybackRate),
+         String(model.bpm), String(showFingerings), String(chartFontSize)].joined(separator: ":")
+    }
+}
+
+/// One container view: if this returned several views they would join the parent's
+/// list, and every tick would rebuild the sibling pickers and menus (and their NSMenus).
+private struct TransportPositionRows: View {
+    let model: ChordWikiViewerModel
+    @ObservedObject var playhead: ChartPlayhead
+    let onSeek: (Double) -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            slider
+            times
+        }
+    }
+
+    private var slider: some View {
+        Slider(
+            value: Binding(get: { playhead.beat }, set: onSeek),
+            in: 0...max(model.timeline?.totalBeats ?? 0, 0.01)
+        )
+        .frame(height: 20)
+        .accessibilityLabel("譜面の再生位置")
+    }
+
+    private var times: some View {
+        HStack {
+            Text(formatTime(model.youtubeSyncEnabled
+                ? playhead.videoPositionMs
+                : model.timeline?.milliseconds(forBeat: playhead.beat, bpm: model.bpm) ?? 0))
+            Spacer()
+            Text("\(model.timeline?.barNumber(atBeat: playhead.beat) ?? 1)小節目")
+            Spacer()
+            Text(formatTime(model.youtubeSyncEnabled && model.youtubeDurationMs > 0
+                ? model.youtubeDurationMs
+                : model.timeline?.milliseconds(forBeat: model.timeline?.totalBeats ?? 0, bpm: model.bpm) ?? 0))
+        }
+        .font(.callout.monospacedDigit())
+        .foregroundStyle(.primary)
+        .frame(height: 18)
+    }
+
+    private func formatTime(_ milliseconds: Int64) -> String {
+        let seconds = max(milliseconds, 0) / 1_000
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+private struct CurrentChordLabel: View {
+    @ObservedObject var active: ChartActivePosition
+
+    var body: some View {
+        Text(active.event?.symbol ?? "—")
+            .font(.system(size: 19, weight: .semibold, design: .rounded))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .accessibilityLabel("現在のコード")
+            .accessibilityValue(active.event?.symbol ?? "なし")
+    }
+}
+
+private struct PlaybackBPMText: View {
+    let model: ChordWikiViewerModel
+    @ObservedObject var playhead: ChartPlayhead
+
+    var body: some View {
+        Text("\(Int(model.playbackBPM.rounded())) BPM")
+    }
+}
+
+/// Only the value text follows the playhead, so the surrounding Form rows are left alone.
+private struct LocalBPMText: View {
+    let model: ChordWikiViewerModel
+    @ObservedObject var playhead: ChartPlayhead
+
+    var body: some View {
+        Text(String(format: "%.1f", model.syncStatus?.localBPM ?? 0))
     }
 }

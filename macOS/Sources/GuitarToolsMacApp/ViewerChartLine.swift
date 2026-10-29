@@ -2,11 +2,12 @@ import AppKit
 import GuitarToolsCore
 import SwiftUI
 
-struct ViewerChartLine: View {
+struct ViewerChartLine: View, Equatable {
     let line: ChartLine
     let lineIndex: Int
-    let activeEvent: TimedChordEvent?
-    let anchors: [ChordSyncAnchor]
+    /// The playing chord's segment when it is on this line, so other lines stay unchanged.
+    let activeSegment: Int?
+    let anchoredSegments: Set<Int>
     let calibrationMode: Bool
     let showFingerings: Bool
     let fontSize: CGFloat
@@ -15,6 +16,14 @@ struct ViewerChartLine: View {
     var canAnchor = false
     let onAnchor: (TimedChordEvent) -> Void
     @State private var selectedSegment: Int?
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.lineIndex == rhs.lineIndex && lhs.activeSegment == rhs.activeSegment
+            && lhs.anchoredSegments == rhs.anchoredSegments && lhs.calibrationMode == rhs.calibrationMode
+            && lhs.showFingerings == rhs.showFingerings && lhs.fontSize == rhs.fontSize
+            && lhs.canAnchor == rhs.canAnchor && lhs.line == rhs.line && lhs.events == rhs.events
+            && lhs.previousSymbols == rhs.previousSymbols
+    }
 
     private var isInstrumental: Bool {
         line.segments.allSatisfy { segment in
@@ -83,7 +92,7 @@ struct ViewerChartLine: View {
 
     private func chordButton(_ chord: String, index: Int) -> some View {
         let event = events.first { $0.segmentIndex == index }
-        let anchored = anchors.contains { $0.lineIndex == lineIndex && $0.segmentIndex == index }
+        let anchored = anchoredSegments.contains(index)
         return Button {
             // ⌥-click anchors the chord to the video's current time without entering calibration mode.
             if let event, calibrationMode || (canAnchor && NSEvent.modifierFlags.contains(.option)) {
@@ -113,7 +122,7 @@ struct ViewerChartLine: View {
     }
 
     private func chordBackground(index: Int, anchored: Bool) -> Color {
-        if activeEvent?.lineIndex == lineIndex && activeEvent?.segmentIndex == index {
+        if activeSegment == index {
             return Color.accentColor.opacity(0.24)
         }
         return anchored ? Color.orange.opacity(0.18) : .clear

@@ -2,6 +2,22 @@ import Combine
 import Foundation
 import GuitarToolsCore
 
+/// Playback values that change on every timer tick or video sample.
+/// Only the views that show them observe this, so the toolbar, menus and
+/// side panel are not rebuilt 30 times a second during playback.
+@MainActor
+final class ChartPlayhead: ObservableObject {
+    @Published fileprivate(set) var beat = 0.0
+    @Published fileprivate(set) var videoPositionMs: Int64 = 0
+}
+
+/// The chord and line under the playhead; changes only at chord boundaries.
+@MainActor
+final class ChartActivePosition: ObservableObject {
+    @Published fileprivate(set) var event: TimedChordEvent?
+    @Published fileprivate(set) var lineIndex: Int?
+}
+
 @MainActor
 final class ChordWikiViewerModel:
     ObservableObject {
@@ -28,7 +44,35 @@ final class ChordWikiViewerModel:
 
     @Published private(set)
     var timeline:
-        ChordTimeline?
+        ChordTimeline? {
+        didSet {
+            guard timeline != oldValue else { return }
+            eventsByLine = Dictionary(grouping: timeline?.events ?? [], by: \.lineIndex)
+            previousSymbolsByLine = [:]
+            updateActivePosition()
+        }
+    }
+
+    /// Per-line lookups the chart rows need; rebuilt only when the timeline changes.
+    private(set) var eventsByLine: [Int: [TimedChordEvent]] = [:]
+    private var previousSymbolsByLine: [Int: [Int: String]] = [:]
+
+    func previousSymbols(lineIndex: Int) -> [Int: String] {
+        if let cached = previousSymbolsByLine[lineIndex] { return cached }
+        let symbols = ChartVoicingContext.previousSymbols(timeline: timeline, lineIndex: lineIndex)
+        previousSymbolsByLine[lineIndex] = symbols
+        return symbols
+    }
+
+    let playhead = ChartPlayhead()
+    let activePosition = ChartActivePosition()
+
+    private func updateActivePosition() {
+        let event = timeline?.event(atBeat: currentBeat)
+        if activePosition.event != event { activePosition.event = event }
+        let line = timeline?.line(atBeat: currentBeat)?.lineIndex
+        if activePosition.lineIndex != line { activePosition.lineIndex = line }
+    }
 
     @Published private(set)
     var isLoading = false
@@ -114,8 +158,13 @@ final class ChordWikiViewerModel:
     var youtubeOffsetMs:
         Int64 = 0
 
-    @Published private(set)
-    var currentBeat = 0.0
+    private(set) var currentBeat: Double {
+        get { playhead.beat }
+        set {
+            if playhead.beat != newValue { playhead.beat = newValue }
+            updateActivePosition()
+        }
+    }
 
     @Published private(set)
     var isPlaying = false
@@ -124,9 +173,10 @@ final class ChordWikiViewerModel:
     var youtubePlaying =
         false
 
-    @Published private(set)
-    var youtubePositionMs:
-        Int64 = 0
+    private(set) var youtubePositionMs: Int64 {
+        get { playhead.videoPositionMs }
+        set { if playhead.videoPositionMs != newValue { playhead.videoPositionMs = newValue } }
+    }
 
     @Published private(set)
     var youtubeDurationMs:

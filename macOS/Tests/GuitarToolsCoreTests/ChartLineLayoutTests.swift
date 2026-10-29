@@ -71,7 +71,7 @@ final class ChartLineLayoutTests: XCTestCase {
     }
 
     private func chartLine(_ line: ChartLine, fontSize: CGFloat = 20, diagrams: Bool = false) -> some View {
-        ViewerChartLine(line: line, lineIndex: 0, activeEvent: nil, anchors: [], calibrationMode: false,
+        ViewerChartLine(line: line, lineIndex: 0, activeSegment: nil, anchoredSegments: [], calibrationMode: false,
                         showFingerings: diagrams, fontSize: fontSize, events: [], previousSymbols: [:], onAnchor: { _ in })
     }
 }
