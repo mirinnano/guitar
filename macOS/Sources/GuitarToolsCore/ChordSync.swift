@@ -122,6 +122,11 @@ public struct ChordSyncMap:
         }
     }
 
+    /// Anchors closer than this cannot estimate a whole-song tempo reliably.
+    /// Outside them the chart tempo continues from the nearest anchor, so a
+    /// few milliseconds of tap error are not amplified across the song.
+    public static let minimumWarpSpanBeats = 16.0
+
     public func beat(
         forVideoPositionMs:
             Int64
@@ -131,26 +136,14 @@ public struct ChordSyncMap:
             return 0
         }
 
-        let raw:
-            Double
-
-        switch anchors.count {
-        case 0:
+        let raw: Double
+        if anchors.isEmpty {
             raw = fallbackTempoMap.beat(forSeconds: Double(forVideoPositionMs - fallbackOffsetMs) / 1_000)
-
-        case 1:
-            let anchor =
-                anchors[0]
-
-            raw = fallbackTempoMap.beat(forSeconds:
-                fallbackTempoMap.seconds(forBeat: anchor.chartBeat)
-                    + Double(forVideoPositionMs - anchor.videoPositionMs) / 1_000)
-
-        default:
-            raw =
-                beatFromAnchors(
-                    forVideoPositionMs
-                )
+        } else {
+            let segment = segment(forPositionMs: forVideoPositionMs)
+            let nominalMs = nominalMs(forBeat: segment.origin.chartBeat)
+                + Double(forVideoPositionMs - segment.origin.videoPositionMs) / segment.rate
+            raw = fallbackTempoMap.beat(forSeconds: nominalMs / 1_000)
         }
 
         return min(
@@ -168,25 +161,13 @@ public struct ChordSyncMap:
                 totalBeats
             )
 
-        let value:
-            Double
-
-        switch anchors.count {
-        case 0:
-            value = Double(fallbackOffsetMs) + fallbackTempoMap.seconds(forBeat: target) * 1_000
-
-        case 1:
-            let anchor =
-                anchors[0]
-
-            value = Double(anchor.videoPositionMs) +
-                (fallbackTempoMap.seconds(forBeat: target) - fallbackTempoMap.seconds(forBeat: anchor.chartBeat)) * 1_000
-
-        default:
-            value =
-                positionFromAnchors(
-                    target
-                )
+        let value: Double
+        if anchors.isEmpty {
+            value = Double(fallbackOffsetMs) + nominalMs(forBeat: target)
+        } else {
+            let segment = segment(forBeat: target)
+            value = Double(segment.origin.videoPositionMs)
+                + (nominalMs(forBeat: target) - nominalMs(forBeat: segment.origin.chartBeat)) * segment.rate
         }
 
         return Int64(
@@ -200,45 +181,10 @@ public struct ChordSyncMap:
     public func localBPM(
         atBeat beat: Double
     ) -> Double {
-        guard anchors.count >= 2
-        else {
-            return fallbackTempoMap.bpm(atBeat: beat)
-        }
-
-        let pair =
-            anchorPair(
-                forBeat:
-                    min(
-                        max(
-                            beat,
-                            0
-                        ),
-                        totalBeats
-                    )
-            )
-
-        let deltaBeat =
-            pair.1.chartBeat -
-            pair.0.chartBeat
-
-        let deltaMs =
-            pair.1
-                .videoPositionMs -
-            pair.0
-                .videoPositionMs
-
-        guard
-            deltaBeat > 0,
-            deltaMs > 0
-        else {
-            return Double(
-                fallbackBPM
-            )
-        }
-
-        return deltaBeat *
-            60_000 /
-            Double(deltaMs)
+        let target = min(max(beat, 0), totalBeats)
+        let nominal = fallbackTempoMap.bpm(atBeat: target)
+        guard !anchors.isEmpty else { return nominal }
+        return nominal / segment(forBeat: target).rate
     }
 
     public func status(
@@ -345,168 +291,37 @@ public struct ChordSyncMap:
         }
     }
 
-    private func beatFromAnchors(
-        _ positionMs: Int64
-    ) -> Double {
-        let pair =
-            anchorPair(
-                forPositionMs:
-                    positionMs
-            )
-
-        let deltaMs =
-            pair.1
-                .videoPositionMs -
-            pair.0
-                .videoPositionMs
-
-        guard deltaMs > 0
-        else {
-            return pair.0
-                .chartBeat
-        }
-
-        let ratio =
-            Double(
-                positionMs -
-                pair.0
-                    .videoPositionMs
-            ) /
-            Double(deltaMs)
-
-        return pair.0
-            .chartBeat +
-            (
-                pair.1
-                    .chartBeat -
-                pair.0
-                    .chartBeat
-            ) *
-            ratio
+    private func nominalMs(forBeat beat: Double) -> Double {
+        fallbackTempoMap.seconds(forBeat: max(beat, 0)) * 1_000
     }
 
-    private func positionFromAnchors(
-        _ beat: Double
-    ) -> Double {
-        let pair =
-            anchorPair(
-                forBeat: beat
-            )
-
-        let deltaBeat =
-            pair.1.chartBeat -
-            pair.0.chartBeat
-
-        guard deltaBeat > 0
-        else {
-            return Double(
-                pair.0
-                    .videoPositionMs
-            )
+    /// Video milliseconds per nominal chart millisecond, measured from `origin`.
+    /// Between anchors the chart's own tempo changes are kept and only stretched.
+    private func segment(forBeat beat: Double) -> (origin: ChordSyncAnchor, rate: Double) {
+        if let upper = anchors.firstIndex(where: { $0.chartBeat > beat }), upper > 0 {
+            return (anchors[upper - 1], rate(from: anchors[upper - 1], to: anchors[upper]))
         }
-
-        let ratio =
-            (
-                beat -
-                pair.0.chartBeat
-            ) /
-            deltaBeat
-
-        return Double(
-            pair.0
-                .videoPositionMs
-        ) +
-        Double(
-            pair.1
-                .videoPositionMs -
-            pair.0
-                .videoPositionMs
-        ) *
-        ratio
+        return (beat < anchors[0].chartBeat ? anchors[0] : anchors[anchors.count - 1], extrapolationRate)
     }
 
-    private func anchorPair(
-        forPositionMs value:
-            Int64
-    ) -> (
-        ChordSyncAnchor,
-        ChordSyncAnchor
-    ) {
-        if value <=
-            anchors[0]
-                .videoPositionMs {
-            return (
-                anchors[0],
-                anchors[1]
-            )
+    private func segment(forPositionMs value: Int64) -> (origin: ChordSyncAnchor, rate: Double) {
+        if let upper = anchors.firstIndex(where: { $0.videoPositionMs > value }), upper > 0 {
+            return (anchors[upper - 1], rate(from: anchors[upper - 1], to: anchors[upper]))
         }
-
-        if value >=
-            anchors[
-                anchors.count - 1
-            ]
-            .videoPositionMs {
-            return (
-                anchors[
-                    anchors.count - 2
-                ],
-                anchors[
-                    anchors.count - 1
-                ]
-            )
-        }
-
-        let upper =
-            anchors.firstIndex {
-                $0.videoPositionMs >=
-                value
-            }!
-
-        return (
-            anchors[upper - 1],
-            anchors[upper]
-        )
+        return (value < anchors[0].videoPositionMs ? anchors[0] : anchors[anchors.count - 1], extrapolationRate)
     }
 
-    private func anchorPair(
-        forBeat value: Double
-    ) -> (
-        ChordSyncAnchor,
-        ChordSyncAnchor
-    ) {
-        if value <=
-            anchors[0]
-                .chartBeat {
-            return (
-                anchors[0],
-                anchors[1]
-            )
-        }
+    private func rate(from start: ChordSyncAnchor, to end: ChordSyncAnchor) -> Double {
+        let nominal = nominalMs(forBeat: end.chartBeat) - nominalMs(forBeat: start.chartBeat)
+        let video = Double(end.videoPositionMs - start.videoPositionMs)
+        guard nominal > 0, video > 0 else { return 1 }
+        return video / nominal
+    }
 
-        if value >=
-            anchors[
-                anchors.count - 1
-            ]
-            .chartBeat {
-            return (
-                anchors[
-                    anchors.count - 2
-                ],
-                anchors[
-                    anchors.count - 1
-                ]
-            )
-        }
-
-        let upper =
-            anchors.firstIndex {
-                $0.chartBeat >=
-                value
-            }!
-
-        return (
-            anchors[upper - 1],
-            anchors[upper]
-        )
+    /// The whole anchored span estimates the tempo outside it; short spans keep the chart tempo.
+    private var extrapolationRate: Double {
+        guard let first = anchors.first, let last = anchors.last,
+              last.chartBeat - first.chartBeat >= Self.minimumWarpSpanBeats else { return 1 }
+        return min(max(rate(from: first, to: last), 0.5), 2)
     }
 }

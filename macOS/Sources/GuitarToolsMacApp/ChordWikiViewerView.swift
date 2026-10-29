@@ -190,6 +190,12 @@ struct ChordWikiViewerView:
             guard model.chart != nil else { return }
             inspectorPresented.toggle()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .chartSyncNearestChord)) { _ in
+            model.syncToNearestChord()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .chartSyncFirstChord)) { _ in
+            model.syncFirstChordToNow()
+        }
         .onDisappear {
             youtubeController.pause()
             model.stop()
@@ -320,9 +326,11 @@ struct ChordWikiViewerView:
                                         }
                                     ?? [],
                                 previousSymbols: ChartVoicingContext.previousSymbols(timeline: model.timeline, lineIndex: index),
-                                onAnchor:
-                                    model
-                                        .addAnchor
+                                canAnchor: model.youtubeVideoID != nil,
+                                onAnchor: { event in
+                                    if !model.youtubeSyncEnabled { model.setYouTubeSync(true) }
+                                    model.addAnchor(event: event)
+                                }
                             )
                             .id(index)
                         }
@@ -427,6 +435,11 @@ struct ChordWikiViewerView:
                 Text(
                     "\(Int(model.playbackBPM.rounded())) BPM"
                 )
+                if chart.bpm == nil {
+                    Text("（譜面にBPMの記載なし）")
+                        .foregroundStyle(.tertiary)
+                        .help("BPMは仮の値です。動画に合わせるときは、離れた2か所で「合わせる」を使うとテンポも補正されます。")
+                }
 
                 Text(
                     "\(chart.beatsPerBar)/\(chart.beatUnit)"
@@ -667,6 +680,23 @@ struct ChordWikiViewerView:
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help("繰り返す区間の開始・終了位置を設定")
+            if model.youtubeVideoID != nil {
+                Menu {
+                    Button("ここで合わせる（近いコード）  ⌘J", action: model.syncToNearestChord)
+                    Button("ここを最初のコードにする  ⇧⌘J", action: model.syncFirstChordToNow)
+                    Divider()
+                    Button("合わせた位置をすべて消す", role: .destructive, action: model.clearAnchors)
+                        .disabled(model.anchors.isEmpty)
+                } label: {
+                    Label(model.anchors.isEmpty ? "合わせる" : "合わせる \(model.anchors.count)", systemImage: "scope")
+                } primaryAction: {
+                    model.syncToNearestChord()
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("コードが変わった瞬間に押すと、近いコードを動画のこの時刻に合わせます（⌘J）。"
+                      + "無音や前奏のあと最初のコードが鳴った瞬間は ⇧⌘J。再生中にコードを⌥クリックしても合わせられます。")
+            }
             if model.loopEnabled, let range = model.practiceLoop {
                 let bar = Double(model.timeline?.beatsPerBar ?? 4)
                 Text("\(Int(floor(range.startBeat / bar)) + 1)〜\(Int(ceil(range.endBeat / bar)))小節")

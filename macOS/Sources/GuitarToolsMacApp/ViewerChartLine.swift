@@ -1,3 +1,4 @@
+import AppKit
 import GuitarToolsCore
 import SwiftUI
 
@@ -11,6 +12,7 @@ struct ViewerChartLine: View {
     let fontSize: CGFloat
     let events: [TimedChordEvent]
     let previousSymbols: [Int: String]
+    var canAnchor = false
     let onAnchor: (TimedChordEvent) -> Void
     @State private var selectedSegment: Int?
 
@@ -83,7 +85,8 @@ struct ViewerChartLine: View {
         let event = events.first { $0.segmentIndex == index }
         let anchored = anchors.contains { $0.lineIndex == lineIndex && $0.segmentIndex == index }
         return Button {
-            if calibrationMode, let event {
+            // ⌥-click anchors the chord to the video's current time without entering calibration mode.
+            if let event, calibrationMode || (canAnchor && NSEvent.modifierFlags.contains(.option)) {
                 onAnchor(event)
             } else if !calibrationMode {
                 selectedSegment = index

@@ -8,7 +8,7 @@
 譜面、曲で使うコードの押さえ方、再生操作を一つの画面にまとめました。
 課題の提案や演奏の採点を始めず、必要な道具だけを手元に置きます。
 
-[ダウンロード](https://github.com/mirinnano/guitar/releases/latest) · [Macの導入手順](docs/install-macos.md) · [変更履歴](docs/releases/v0.3.1.md) · [不具合の報告](https://github.com/mirinnano/guitar/issues/new/choose)
+[ダウンロード](https://github.com/mirinnano/guitar/releases/latest) · [Macの導入手順](docs/install-macos.md) · [変更履歴](docs/releases/v1.0.0.md) · [不具合の報告](https://github.com/mirinnano/guitar/issues/new/choose)
 
 > **Mac版はDeveloper ID未署名、Apple未公証です（ad-hoc署名）。**
 > 初回起動時にmacOSがブロックする場合があります。
@@ -25,8 +25,8 @@
 - 歌詞とコードの対応を保って折り返し。文字サイズをその場で変更。
 - 右側の「コード」タブに、曲内の使用コードと押さえ方を常時表示。別フォームも選択可能。
 - 自動スクロール、速度変更、区間リピート、現在コードと小節位置の表示。
-- ChordWikiの楽曲情報にYouTubeリンクがあれば動画パネルを表示。オフセットや同期アンカーでタイミングを調整。
-- 曲中の明示されたテンポ変更に対応。行の小節数やBPMは必要なときに自分で調整。
+- ChordWikiの楽曲情報にYouTubeリンクがあれば動画パネルを表示。再生中に「合わせる」（⌘J）を押すか、オフセットと同期アンカーでタイミングを調整。
+- 曲中の明示されたテンポ変更、行内の拍子変更、繰り返し記号（x4）に対応。行の小節数やBPMは必要なときに自分で調整。
 - 最近開いた譜面のリンクを保存。起動時は検索と履歴だけを表示。
 
 サイドバーは「譜面」「チューナー」「メトロノーム」「コード」「指板」の5項目です。

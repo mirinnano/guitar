@@ -257,6 +257,9 @@ public enum ChordChartParser {
                 #"\[([^\]]+)\]"#
         )
 
+    /// Rhythm and bar marks some editors put in brackets: `[|]`, `[-- --]`, `[↓]`.
+    private static let rhythmBracket = try! NSRegularExpression(pattern: #"\[([\s\-|｜│↓↑>＞]+)\]"#)
+
     private static let chordToken =
         try! NSRegularExpression(
             pattern:
@@ -280,6 +283,7 @@ public enum ChordChartParser {
         var beatsPerBar = 4
         var beatUnit = 4
         var lines: [ChartLine] = []
+        var previousChord: String?
 
         source
             .replacingOccurrences(
@@ -411,10 +415,11 @@ public enum ChordChartParser {
                     return
                 }
 
-                if trimmed.hasPrefix("※") {
+                // `<検索用> …` holds search keywords, not music.
+                if trimmed.hasPrefix("※") || (trimmed.hasPrefix("<") && trimmed.contains(">") && !trimmed.contains("[")) {
                     lines.append(ChartLine(segments: [ChartSegment(text: rawLine)], kind: .comment))
                 } else {
-                    lines.append(parseContentLine(rawLine))
+                    lines.append(parseContentLine(rawLine, previousChord: &previousChord))
                 }
             }
 
@@ -474,8 +479,11 @@ public enum ChordChartParser {
     }
 
     private static func parseContentLine(
-        _ line: String
+        _ source: String,
+        previousChord: inout String?
     ) -> ChartLine {
+        let line = rhythmBracket.stringByReplacingMatches(
+            in: source, range: NSRange(location: 0, length: (source as NSString).length), withTemplate: "$1")
         let nsLine =
             line as NSString
 
@@ -533,8 +541,9 @@ public enum ChordChartParser {
                     in: .whitespaces
                 )
 
-            if isChordToken(token) {
-                pendingChord = token
+            if let chord = normalizedChordToken(token, previous: previousChord) {
+                pendingChord = chord
+                if !["<", "N.C.", "NC"].contains(chord.uppercased()) { previousChord = chord }
             } else {
                 appendSegment(
                     chord: nil,
@@ -605,6 +614,35 @@ public enum ChordChartParser {
                 )
             )
         }
+    }
+
+    private static let bassNote = try! NSRegularExpression(pattern: #"^[A-G](?:#|b)?$"#)
+
+    /// Reads editor variations of a chord name: full-width letters, accent marks
+    /// (`[Am>]`), and bass-only changes (`[/B]` after `[Em7]` means `Em7/B`).
+    private static func normalizedChordToken(_ token: String, previous: String?) -> String? {
+        var value = String(token.unicodeScalars.map { scalar -> Character in
+            switch scalar.value {
+            case 0xFF01...0xFF5E: Character(UnicodeScalar(scalar.value - 0xFEE0)!)
+            case 0x266F: "#"
+            default: Character(scalar)
+            }
+        })
+        while let last = value.last, ">^!".contains(last) { value.removeLast() }
+        value = value.trimmingCharacters(in: .whitespaces)
+        if value.hasPrefix("/"), let previous {
+            let bass = String(value.dropFirst())
+            guard bassNote.firstMatch(in: bass, range: NSRange(location: 0, length: (bass as NSString).length)) != nil
+            else { return nil }
+            var base = previous
+            if let slash = previous.range(of: "/", options: .backwards),
+               bassNote.firstMatch(in: String(previous[slash.upperBound...]),
+                                   range: NSRange(location: 0, length: (previous[slash.upperBound...] as Substring).utf16.count)) != nil {
+                base = String(previous[..<slash.lowerBound])
+            }
+            value = base + "/" + bass
+        }
+        return isChordToken(value) ? value : nil
     }
 
     private static func isChordToken(
@@ -737,6 +775,7 @@ public enum ChordTimelineBuilder {
         var tempoChanges: [TimedTempoChange] = []
         let inferredBars = inferredUnmarkedBars(chart: chart)
         let fallbackBars = min(max(unmarkedBarsPerLine ?? inferredBars, 1), 16)
+        var meterBeats = Double(chart.beatsPerBar)
 
         for (
             lineIndex,
@@ -748,14 +787,6 @@ public enum ChordTimelineBuilder {
             guard line.kind == .content else {
                 continue
             }
-
-            let groups =
-                splitIntoBars(line)
-
-            let effective =
-                groups.isEmpty
-                ? [[]]
-                : groups
 
             let hasText =
                 line.segments
@@ -782,44 +813,32 @@ public enum ChordTimelineBuilder {
                 continue
             }
             let lineStart = beatCursor
-            let barLength = Double(chart.beatsPerBar) * Double(hasBars ? 1 : fallbackBars)
+            let scan = scanBars(line, meterBeats: &meterBeats, fallbackBars: fallbackBars)
 
-            for group in effective {
-                let barStart =
-                    beatCursor
-
-                if !group.isEmpty {
-                    let duration =
-                        barLength /
-                        Double(group.count)
-
-                    for (
-                        index,
-                        chord
-                    ) in group.enumerated() {
-                        events.append(
-                            TimedChordEvent(
-                                id: nextID,
-                                symbol:
-                                    chord.symbol,
-                                lineIndex:
-                                    lineIndex,
-                                segmentIndex:
-                                    chord.segmentIndex,
-                                startBeat:
-                                    barStart +
-                                    Double(index) *
-                                    duration,
-                                durationBeats:
-                                    duration,
-                                isPlayable: chord.isPlayable
-                            )
-                        )
-                        nextID += 1
+            for _ in 0..<scan.repeats {
+                for bar in scan.bars {
+                    let slots = bar.slots
+                    let totalWeight = slots.reduce(0) { $0 + $1.weight }
+                    var slotStart = beatCursor
+                    for (index, slot) in slots.enumerated() {
+                        let duration = totalWeight > 0 ? bar.beats * slot.weight / totalWeight : 0
+                        if let chord = slot.chord {
+                            events.append(TimedChordEvent(id: nextID, symbol: chord.symbol, lineIndex: lineIndex,
+                                                          segmentIndex: chord.segmentIndex, startBeat: slotStart,
+                                                          durationBeats: duration, isPlayable: chord.isPlayable))
+                            nextID += 1
+                        } else if index == 0, slots.count > 1, let held = events.last,
+                                  abs(held.startBeat + held.durationBeats - slotStart) < 0.0001 {
+                            // Lyrics or rests before the bar's first chord keep the previous chord sounding.
+                            events[events.count - 1] = TimedChordEvent(
+                                id: held.id, symbol: held.symbol, lineIndex: held.lineIndex,
+                                segmentIndex: held.segmentIndex, startBeat: held.startBeat,
+                                durationBeats: held.durationBeats + duration, isPlayable: held.isPlayable)
+                        }
+                        slotStart += duration
                     }
+                    beatCursor += bar.beats
                 }
-
-                beatCursor += barLength
             }
             lineTimings.append(TimedChartLine(lineIndex: lineIndex, startBeat: lineStart,
                                              durationBeats: beatCursor - lineStart))
@@ -838,8 +857,10 @@ public enum ChordTimelineBuilder {
     }
 
     public static func inferredUnmarkedBars(chart: ChordChart) -> Int {
-        let counts = chart.lines.filter { $0.kind == .content && $0.segments.contains { normalizedBars($0.text).contains("|") } }
-            .map { splitIntoBars($0).count }.filter { $0 > 0 }.sorted()
+        var meterBeats = Double(chart.beatsPerBar)
+        let counts = chart.lines.filter { $0.kind == .content }
+            .map { scanBars($0, meterBeats: &meterBeats, fallbackBars: 1) }
+            .filter(\.isBarred).map(\.bars.count).filter { $0 > 0 }.sorted()
         return counts.isEmpty ? 1 : min(max(counts[counts.count / 2], 1), 16)
     }
 
@@ -853,59 +874,149 @@ public enum ChordTimelineBuilder {
         let isPlayable: Bool
     }
 
-    private static func splitIntoBars(
-        _ line: ChartLine
-    ) -> [[IndexedChord]] {
-        var groups:
-            [[IndexedChord]] = []
-        var current:
-            [IndexedChord] = []
-        var sawBar = false
+    /// One bar as written: its chords, the rhythm dashes after each, and what precedes the first chord.
+    private struct ScannedBar {
+        var chords: [IndexedChord] = []
+        var dashes: [Int] = []
+        var leadingDashes = 0
+        var leadingLyric = false
+        var hasLyric = false
+        var beats = 0.0
 
-        for (
-            segmentIndex,
-            segment
-        ) in line.segments.enumerated() {
-            if let chord =
-                segment.timingChord {
-                current.append(
-                    IndexedChord(
-                        segmentIndex:
-                            segmentIndex,
-                        symbol: chord,
-                        isPlayable: segment.chord != nil
-                    )
-                )
+        var isEmpty: Bool {
+            chords.isEmpty && leadingDashes == 0 && dashes.allSatisfy { $0 == 0 } && !hasLyric
+        }
+
+        /// Wiki rhythm dashes (`[C]---[G]-`) place chords inside the bar when every chord has them.
+        /// Otherwise chords share the bar equally, with one held slot for lyrics before the first chord.
+        var slots: [(chord: IndexedChord?, weight: Double)] {
+            guard !chords.isEmpty else { return [(nil, 1)] }
+            let dashTimed = !hasLyric && dashes.allSatisfy { $0 > 0 }
+            let hold = dashTimed ? Double(leadingDashes) : (leadingLyric || leadingDashes > 0 ? 1 : 0)
+            let timed = chords.indices.map { (Optional(chords[$0]), dashTimed ? Double(dashes[$0]) : 1) }
+            return hold > 0 ? [(nil, hold)] + timed : timed
+        }
+    }
+
+    private struct LineScan {
+        var bars: [ScannedBar]
+        var isBarred: Bool
+        var repeats: Int
+    }
+
+    /// Inline meter changes written by wiki editors, e.g. `(3/4)` or `(6/8)`.
+    private static let meterToken = try! NSRegularExpression(
+        pattern: #"[(（]\s*(\d{1,2})\s*/\s*(1|2|4|8|16)\s*[)）]"#)
+
+    /// A repeat count after the last bar line, e.g. `|[C]----|[G]----| x4`.
+    private static let repeatTail = try! NSRegularExpression(pattern: #"^\s*[xX×✕]\s*(\d{1,2})\s*$"#)
+
+    private enum TextPiece {
+        case text(String)
+        case meter(Double)
+    }
+
+    private static func pieces(_ text: String) -> [TextPiece] {
+        let ns = text as NSString
+        var result: [TextPiece] = []
+        var cursor = 0
+        for match in meterToken.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            guard let beats = Int(ns.substring(with: match.range(at: 1))),
+                  let unit = Int(ns.substring(with: match.range(at: 2))), (1...16).contains(beats) else { continue }
+            if match.range.location > cursor {
+                result.append(.text(ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor))))
             }
+            result.append(.meter(Double(beats) * 4 / Double(unit)))
+            cursor = match.range.location + match.range.length
+        }
+        if cursor < ns.length { result.append(.text(ns.substring(from: cursor))) }
+        return result
+    }
 
-            let barCount =
-                normalizedBars(segment.text)
-                    .split(
-                        separator: "|",
-                        omittingEmptySubsequences:
-                            false
-                    )
-                    .count - 1
+    private static func scanBars(_ line: ChartLine, meterBeats: inout Double, fallbackBars: Int) -> LineScan {
+        var bars: [ScannedBar] = []
+        var current = ScannedBar()
+        var barred = false
+        var opensWithBarLine = false
+        var tail = ""
 
-            if barCount > 0 {
-                sawBar = true
+        func closeBar() {
+            current.beats = meterBeats
+            bars.append(current)
+            current = ScannedBar()
+            tail = ""
+        }
 
-                for _ in 0..<barCount {
-                    groups.append(
-                        current
-                    )
-                    current.removeAll(
-                        keepingCapacity: true
-                    )
+        func changeMeter(_ beats: Double) {
+            // A meter written mid-line starts a new bar, like an implicit bar line.
+            if !current.isEmpty {
+                closeBar()
+                barred = true
+            }
+            meterBeats = beats
+        }
+
+        for (segmentIndex, segment) in line.segments.enumerated() {
+            var textPieces = pieces(normalizedBars(segment.text))
+            if segment.timingChord != nil,
+               case .text(let lead)? = textPieces.first, lead.allSatisfy(\.isWhitespace),
+               textPieces.count > 1, case .meter(let beats) = textPieces[1] {
+                // `[Em](3/4)` puts the chord on the first beat of the new meter.
+                changeMeter(beats)
+                textPieces.removeFirst(2)
+            } else if segment.timingChord != nil, case .meter(let beats)? = textPieces.first {
+                changeMeter(beats)
+                textPieces.removeFirst()
+            }
+            if let chord = segment.timingChord {
+                current.chords.append(IndexedChord(segmentIndex: segmentIndex, symbol: chord, isPlayable: segment.chord != nil))
+                current.dashes.append(0)
+            }
+            for piece in textPieces {
+                switch piece {
+                case .meter(let beats):
+                    changeMeter(beats)
+                case .text(let text):
+                    for character in text {
+                        if character == "|" {
+                            // A line-leading bar line opens the first bar rather than ending an empty one.
+                            if bars.isEmpty && current.isEmpty && !barred { opensWithBarLine = true } else { closeBar() }
+                            barred = true
+                            tail = ""
+                        } else if character == "-" {
+                            if current.chords.isEmpty { current.leadingDashes += 1 } else { current.dashes[current.dashes.count - 1] += 1 }
+                            tail.append(character)
+                        } else if character.isWhitespace || ">＞↓↑".contains(character) {
+                            tail.append(character)
+                        } else {
+                            if current.chords.isEmpty { current.leadingLyric = true }
+                            current.hasLyric = true
+                            tail.append(character)
+                        }
+                    }
                 }
             }
         }
 
-        if !current.isEmpty ||
-            !sawBar {
-            groups.append(current)
+        var repeats = 1
+        if barred {
+            let ns = tail as NSString
+            if let match = repeatTail.firstMatch(in: tail, range: NSRange(location: 0, length: ns.length)),
+               let count = Int(ns.substring(with: match.range(at: 1))), (2...16).contains(count) {
+                repeats = count
+            }
+            if !current.chords.isEmpty || current.leadingDashes > 0 || current.dashes.contains(where: { $0 > 0 }) {
+                closeBar()
+            }
+            // `[C]lyrics[G]more[Am]words-|[F]--|`: a sung phrase before the first bar line
+            // is an unmarked line followed by marked bars, not one crowded bar.
+            if !opensWithBarLine, let first = bars.first, first.hasLyric, first.chords.count >= 3 {
+                bars[0].beats = first.beats * Double(fallbackBars)
+            }
+        } else {
+            current.beats = meterBeats * Double(fallbackBars)
+            bars = [current]
         }
-
-        return groups
+        return LineScan(bars: bars, isBarred: barred, repeats: repeats)
     }
 }

@@ -229,4 +229,56 @@ final class ChordChartTests:
             "[Aメロ]"
         )
     }
+
+    // Wiki editors' own notations, modelled on real ChordWiki pages without their lyrics.
+
+    func testAccentMarksBassOnlyChangesAndBracketedRhythmAreRead() {
+        let chart = ChordChartParser.parse("[Em7]---- --[/B]--|[Am>]la[Ｃ]la[|][G][-- --]x[↓]", fallbackTitle: "Marks")
+        XCTAssertEqual(chart.lines[0].segments.compactMap(\.chord), ["Em7", "Em7/B", "Am", "C", "G"])
+        XCTAssertFalse(chart.lines[0].segments.contains { $0.text.contains("[") })
+    }
+
+    func testSearchKeywordLineIsNotMusic() {
+        let chart = ChordChartParser.parse("[C]la\n<検索用>　keyword", fallbackTitle: "Search")
+        XCTAssertEqual(chart.lines[1].kind, .comment)
+    }
+
+    func testRhythmDashesPlaceChordsInsideTheBar() {
+        let chart = ChordChartParser.parse("|[C]---[G]- --[F]--|---- [Am]--[E]--|", fallbackTitle: "Dashes")
+        let timeline = ChordTimelineBuilder.build(chart: chart)
+        // A leading bar line does not add an empty bar.
+        XCTAssertEqual(timeline.totalBeats, 8)
+        XCTAssertEqual(timeline.events.map(\.startBeat), [0, 1.5, 3, 6, 7])
+        XCTAssertEqual(timeline.events.map(\.durationBeats), [1.5, 1.5, 3, 1, 1])
+    }
+
+    func testRepeatCountRepeatsTheBarsInTime() {
+        let chart = ChordChartParser.parse("|[C]----|----|[G]----|----| x4\n[Am]la", fallbackTitle: "Repeat")
+        let timeline = ChordTimelineBuilder.build(chart: chart)
+        XCTAssertEqual(timeline.lineTimings.map(\.durationBeats), [64, 16])
+        XCTAssertEqual(timeline.events.filter { $0.symbol == "G" }.map(\.startBeat), [8, 24, 40, 56])
+    }
+
+    func testInlineMeterChangesSetBarLengthsAndPersist() {
+        let chart = ChordChartParser.parse("|[C]----|(5/4)-- -- -- -- --|\n|[CM7](3/4)-- -- --|(4/4)-- -- -- [D]--|\n|[Em]-- -- --|", fallbackTitle: "Meter")
+        let timeline = ChordTimelineBuilder.build(chart: chart)
+        XCTAssertEqual(timeline.lineTimings.map(\.durationBeats), [9, 7, 4])
+        XCTAssertEqual(timeline.events.first { $0.symbol == "D" }?.startBeat ?? -1, 9 + 3 + 3, accuracy: 0.001)
+    }
+
+    func testMeterWrittenInsideLyricsStartsANewBar() {
+        let chart = ChordChartParser.parse("[C](3/4)la la(4/4)la[G]la[Em](3/4)la", fallbackTitle: "Implicit")
+        let timeline = ChordTimelineBuilder.build(chart: chart)
+        XCTAssertEqual(timeline.totalBeats, 10)
+        XCTAssertEqual(timeline.events.map(\.symbol), ["C", "G", "Em"])
+        XCTAssertEqual(timeline.events.map(\.startBeat), [0, 5, 7])
+        // Lyrics before G keep C sounding instead of leaving a gap.
+        XCTAssertEqual(timeline.events[0].durationBeats, 5)
+    }
+
+    func testSungPhraseBeforeBarLinesIsNotCrowdedIntoOneBar() {
+        let chart = ChordChartParser.parse("|[C]----|[G]----|\n[Am]la[F]la[G]la[C]la-|[F]----|", fallbackTitle: "Mixed")
+        let timeline = ChordTimelineBuilder.build(chart: chart)
+        XCTAssertEqual(timeline.lineTimings.map(\.durationBeats), [8, 12])
+    }
 }

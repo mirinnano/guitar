@@ -86,6 +86,18 @@ struct GuitarToolsMacApp: App {
 
                 Divider()
 
+                Button("動画のここで合わせる") {
+                    NotificationCenter.default.post(name: .chartSyncNearestChord, object: nil)
+                }
+                .keyboardShortcut("j", modifiers: [.command])
+
+                Button("動画のここを最初のコードにする") {
+                    NotificationCenter.default.post(name: .chartSyncFirstChord, object: nil)
+                }
+                .keyboardShortcut("j", modifiers: [.command, .shift])
+
+                Divider()
+
                 Button(
                     "オーディオ入力を開始 / 停止"
                 ) {

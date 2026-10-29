@@ -16,6 +16,16 @@ extension Notification.Name {
             "PracticeToggleInspector"
         )
 
+    static let chartSyncNearestChord =
+        Notification.Name(
+            "ChartSyncNearestChord"
+        )
+
+    static let chartSyncFirstChord =
+        Notification.Name(
+            "ChartSyncFirstChord"
+        )
+
     static let toggleAudioInput =
         Notification.Name(
             "ToggleAudioInput"

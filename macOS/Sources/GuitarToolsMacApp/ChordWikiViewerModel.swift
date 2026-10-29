@@ -427,9 +427,10 @@ final class ChordWikiViewerModel:
 
     private func retimedAnchors(_ values: [ChordSyncAnchor], timeline: ChordTimeline) -> [ChordSyncAnchor] {
         values.compactMap { anchor in
-            guard let event = timeline.events.first(where: {
+            // Repeated bars (`x4`) produce the same chord several times; keep the nearest pass.
+            guard let event = timeline.events.filter({
                 $0.lineIndex == anchor.lineIndex && $0.segmentIndex == anchor.segmentIndex && $0.symbol == anchor.symbol
-            }) else { return nil }
+            }).min(by: { abs($0.startBeat - anchor.chartBeat) < abs($1.startBeat - anchor.chartBeat) }) else { return nil }
             return ChordSyncAnchor(chartBeat: event.startBeat, videoPositionMs: anchor.videoPositionMs,
                                    symbol: anchor.symbol, lineIndex: anchor.lineIndex, segmentIndex: anchor.segmentIndex)
         }
@@ -812,23 +813,16 @@ final class ChordWikiViewerModel:
                     event.segmentIndex
             )
 
-        guard
-            ChordSyncMap
-                .canInsert(
-                    anchors:
-                        anchors,
-                    candidate:
-                        candidate
-                )
-        else {
-            syncNotice =
-                "前後のアンカー時刻が逆転します。動画位置を確認してください。"
-            return
+        // The newest tap wins: earlier anchors that would run time backwards are dropped.
+        let kept = anchors.filter {
+            !($0.chartBeat < candidate.chartBeat && $0.videoPositionMs >= candidate.videoPositionMs)
+                && !($0.chartBeat > candidate.chartBeat && $0.videoPositionMs <= candidate.videoPositionMs)
         }
+        let replaced = anchors.count - kept.count
 
         anchors =
             ChordSyncMap.upsert(
-                anchors: anchors,
+                anchors: kept,
                 candidate:
                     candidate
             )
@@ -852,10 +846,30 @@ final class ChordWikiViewerModel:
             syncNotice =
                 "\(anchors.count)点固定: 区間ごとのテンポ差を補正"
         }
+        if replaced > 0 {
+            syncNotice = (syncNotice ?? "") + "（食い違う\(replaced)点を置き換え）"
+        }
 
         if isPlaying {
             restartMetronome()
         }
+    }
+
+    /// Anchors the chord boundary nearest the current position to the video's current time.
+    func syncToNearestChord() {
+        guard youtubeVideoID != nil, let timeline else { return }
+        if !youtubeSyncEnabled { setYouTubeSync(true) }
+        let beat = currentBeat
+        guard let event = timeline.events.min(by: { abs($0.startBeat - beat) < abs($1.startBeat - beat) })
+        else { return }
+        addAnchor(event: event)
+    }
+
+    /// For videos with silence or an intro before the chart starts.
+    func syncFirstChordToNow() {
+        guard youtubeVideoID != nil, let first = timeline?.events.first else { return }
+        if !youtubeSyncEnabled { setYouTubeSync(true) }
+        addAnchor(event: first)
     }
 
     func nudgeAnchor(

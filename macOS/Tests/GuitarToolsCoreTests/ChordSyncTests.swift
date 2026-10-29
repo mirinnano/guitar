@@ -87,6 +87,30 @@ final class ChordSyncTests:
         )
     }
 
+    func testCloseAnchorsDoNotAmplifyTapErrorAcrossTheSong() {
+        // Two taps one beat apart, the second 60 ms late: a whole-song warp would
+        // drift by minutes. Outside them the chart tempo continues from the last tap.
+        let map = ChordSyncMap(anchors: [anchor(beat: 0, milliseconds: 1_000), anchor(beat: 1, milliseconds: 1_560)],
+                               fallbackBPM: 120, fallbackOffsetMs: 0, totalBeats: 400)
+        XCTAssertEqual(map.videoPositionMs(forBeat: 401 - 1), 1_560 + 399 * 500)
+        XCTAssertEqual(map.beat(forVideoPositionMs: 1_560 + 100 * 500), 101, accuracy: 0.001)
+        XCTAssertEqual(map.localBPM(atBeat: 200), 120, accuracy: 0.001)
+        XCTAssertEqual(map.beat(forVideoPositionMs: 1_280), 0.5, accuracy: 0.001)
+    }
+
+    func testWideAnchorsCorrectTempoBeyondThemAndKeepTempoChanges() {
+        let tempo = ChordTempoMap(bpm: 120, changes: [TimedTempoChange(startBeat: 8, bpm: 60)])
+        // Video runs 10% slower than the chart everywhere.
+        let map = ChordSyncMap(anchors: [anchor(beat: 0, milliseconds: 0), anchor(beat: 16, milliseconds: 13_200)],
+                               fallbackBPM: 120, fallbackOffsetMs: 0, totalBeats: 32, tempoMap: tempo)
+        XCTAssertEqual(map.videoPositionMs(forBeat: 8), 4_400)
+        XCTAssertEqual(map.videoPositionMs(forBeat: 24), 22_000)
+        XCTAssertEqual(map.localBPM(atBeat: 4), 120 / 1.1, accuracy: 0.001)
+        for beat in stride(from: 0.0, through: 32, by: 0.5) {
+            XCTAssertEqual(map.beat(forVideoPositionMs: map.videoPositionMs(forBeat: beat)), beat, accuracy: 0.002)
+        }
+    }
+
     func testRejectsCrossingAnchor() {
         let anchors = [
             anchor(
